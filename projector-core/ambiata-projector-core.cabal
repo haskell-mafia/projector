@@ -56,3 +56,18 @@ test-suite test
                      , comonad                         == 4.2.*
                      , mtl
                      , containers                      == 0.5.*
+
+benchmark bench
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             bench.hs
+  ghc-options:         -Wall -threaded -O2
+  build-depends:       base
+                     , ambiata-projector-core
+                     , ambiata-p
+                     , ambiata-disorder-corpus
+                     , ambiata-disorder-jack
+                     , criterion                       == 1.1.*
+                     , text
+                     , comonad                         == 4.2.*
+                     , containers                      == 0.5.*
