@@ -39,8 +39,8 @@ nf expr = case expr of
   EVar _ ->
     expr
 
-  ELam ss x t e ->
-    ELam ss x t (nf (subst ss e))
+  ELam ss n ty e ->
+    ELam ss n ty (nf e)
 
   EApp f g ->
     case whnf f of
