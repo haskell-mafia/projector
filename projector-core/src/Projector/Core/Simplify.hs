@@ -1,66 +1,52 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
 module Projector.Core.Simplify (
     nf
   , whnf
   ) where
 
 
-import           Bound (Scope, toScope, fromScope)
-import           Bound.Name (instantiate1Name)
-
-import           P
-
-import           Projector.Core.Syntax (Expr (..))
+import           Projector.Core.Syntax (Expr (..), subst, sextend)
 
 
 -- | Reduce an expression to weak head normal form, i.e. to the outermost abstraction.
-whnf :: Expr l n a -> Expr l n a
-whnf e = case e of
+whnf :: Expr l -> Expr l
+whnf expr = case expr of
   ELit _ ->
-    e
+    expr
 
   EVar _ ->
-    e
+    expr
 
-  ELam _ _ ->
-    e
+  ELam _ _ _ _ ->
+    expr
 
-  EApp f a -> case whnf f of
-    (ELam _ b) ->
-      -- instantiate1Name enters a scope, instantiating its outermost bound variable.
-      -- instantiate1Name :: Monad f => f a -> Scope n f a -> f a
-      -- instantiate1Name :: Expr l a -> Scope () (Expr l) a -> Expr l a
-      whnf (instantiate1Name a b)
-    g ->
-      -- Ill-typed term
-      EApp g a
+  EApp f g ->
+    case whnf f of
+      (ELam ss x _ e) ->
+        whnf (subst (sextend x g ss) e)
+
+      f' ->
+        -- Ill-typed term
+        EApp f' g
 
 -- | Reduce an expression to normal form.
-nf :: Expr l n a -> Expr l n a
-nf e = case e of
+nf :: Expr l -> Expr l
+nf expr = case expr of
   ELit _ ->
-    e
+    expr
 
   EVar _ ->
-    e
+    expr
 
-  ELam t b ->
-    ELam t (overScope nf b)
+  ELam ss n ty e ->
+    ELam ss n ty (nf e)
 
-  EApp f a ->
+  EApp f g ->
     case whnf f of
-      (ELam _ b) ->
-        nf (instantiate1Name a b)
-      g ->
-        -- Ill-typed term
-        EApp (nf g) (nf a)
+      (ELam ss n _ e) ->
+        nf (subst (sextend n g ss) e)
 
--- | Apply a function under binders. This translates the expression
--- under a 'Scope' back into an 'Expr' for a while.
-overScope ::
-     (forall c. Expr l n c -> Expr l n c)
-  -> Scope b (Expr l n) a
-  -> Scope b (Expr l n) a
-overScope f = toScope . f . fromScope
+      f' ->
+        -- Ill-typed term
+        EApp (nf f') (nf g)
