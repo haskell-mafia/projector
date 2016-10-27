@@ -70,7 +70,7 @@ subst ss0 expr =
 
     ELam ss1 x t e ->
       let ss2 = smap (subst ss0) ss1
-      in ELam (sunion ss0 ss2) x t e -- I suspect this is biased wrong, better check the paper
+      in ELam (sunion ss2 ss0) x t e
 
     EApp f g ->
       EApp (subst ss0 f) (subst ss0 g)

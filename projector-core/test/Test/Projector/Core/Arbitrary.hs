@@ -12,6 +12,8 @@ import           Control.Comonad (Comonad (..))
 import           Data.List as L
 import           Data.Map.Strict  (Map)
 import qualified Data.Map.Strict as M
+import qualified Data.Text as T
+
 import           Disorder.Corpus
 import           Disorder.Jack
 
@@ -226,6 +228,21 @@ instance Ground TestLitT where
     VBool _ -> TBool
     VInt _ -> TInt
     VString _ -> TString
+
+  ppGroundType t = case t of
+    TBool -> "Bool"
+    TInt -> "Int"
+    TString -> "String"
+
+  ppGroundValue v = case v of
+    VBool b ->
+      if b then "true" else "false"
+
+    VInt n ->
+      renderIntegral n
+
+    VString s ->
+      T.pack (show s)
 
 genTestLitT :: Jack TestLitT
 genTestLitT =

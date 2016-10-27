@@ -26,6 +26,8 @@ data BenchLitT
 instance Ground BenchLitT where
   data Value BenchLitT = VUnit deriving (Eq, Ord, Show)
   typeOf _ = TUnit
+  ppGroundType _ = "()"
+  ppGroundValue _ = "()"
 
 unit :: Type BenchLitT
 unit =
