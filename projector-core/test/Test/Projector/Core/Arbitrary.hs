@@ -59,11 +59,11 @@ genConstructor :: Jack Constructor
 genConstructor =
   fmap (Constructor . T.toTitle) (elements waters)
 
-genVariants :: Int -> Int -> Jack l -> Jack [(Constructor, [Type l])]
+genVariants :: Int -> Int -> Jack l -> Jack [(Constructor, [RecType l])]
 genVariants m n t =
   fmap (M.toList . M.fromList) . listOfN 1 m $
     (,) <$> genConstructor
-        <*> listOfN 0 n (genType' (max 1 (m `div` 2)) (n `div` 2) t)
+        <*> listOfN 0 n (oneOf [pure RThis, RType <$> genType' (max 1 (m `div` 2)) (n `div` 2) t])
 
 genExpr :: Jack Name -> Jack (Type l) -> Jack (Value l) -> Jack (Expr l)
 genExpr n t v =
@@ -169,12 +169,12 @@ pinsert (Context ns p) n t =
       -- break it apart just one tier
       -- TODO: try recursing, might be cool
       foldl'
-        (\p' (_, ts) ->
+        (\p' (_, rts) ->
           foldl'
             (\m u ->
               mcons u (n, t) m)
             p'
-            ts)
+            (fmap (fromRecType t) rts))
         p
         cts
 
@@ -215,7 +215,7 @@ genWellTypedExpr' n ty names genty genval =
 
         TVariant _ cts -> do
           (con, tys) <- elements cts
-          ECon con ty <$> traverse (\t -> genWellTypedExpr' (n `div` (length tys)) t names genty genval) tys
+          ECon con ty <$> traverse (\rt -> genWellTypedExpr' (n `div` (length tys)) (fromRecType ty rt) names genty genval) tys
 
   -- try to look something appropriate up from the context
   in case plookup names ty of
@@ -250,7 +250,7 @@ genWellTypedPath ctx more want x have =
     then pure (EVar x) -- straightforward lookup
     else case have of
       TVariant _ cts ->
-        ECase (EVar x) <$> genAlternatives ctx more cts want
+        ECase (EVar x) <$> genAlternatives ctx have more cts want
 
       TArrow from _ -> do
         arg <- more ctx from
@@ -263,15 +263,16 @@ genWellTypedPath ctx more want x have =
 genAlternatives ::
      (Ord l, Ground l)
   => Context l
+  -> Type l
   -> (Context l -> Type l -> Jack (Expr l))
-  -> [(Constructor, [Type l])]
+  -> [(Constructor, [RecType l])]
   -> Type l
   -> Jack [(Pattern, Expr l)]
-genAlternatives ctx more cts want =
-  for cts $ \(c, tys) -> do
-    let bnds = L.take (length tys) (freshNames "x")
+genAlternatives ctx ty more cts want =
+  for cts $ \(c, rtys) -> do
+    let bnds = L.take (length rtys) (freshNames "x")
         pat = PCon c (fmap PVar bnds)
-    let ctx' = foldl' (\cc (ty, na) -> cextend cc ty na) ctx (L.zip tys bnds)
+    let ctx' = foldl' (\cc (rty, na) -> cextend cc (fromRecType ty rty) na) ctx (L.zip rtys bnds)
     ex <- more ctx' want
     pure (pat, ex)
 
@@ -363,7 +364,7 @@ genIllTypedExpr' n names genty genval =
         let names' = cextend (cextend names ty na) nty nn
 
         -- generate patterns and alternatives
-        pes <- genAlternatives names' (\c t -> genWellTypedExpr' (n `div` 2) t c genty genval) cts bty
+        pes <- genAlternatives names' ty (\c t -> genWellTypedExpr' (n `div` 2) t c genty genval) cts bty
 
         -- put a different thing in the e
         pure (ELam nn bty (ECase (EVar nn) pes))
@@ -381,7 +382,7 @@ genIllTypedExpr' n names genty genval =
         nety <- genty `suchThat` (/= ety)
 
         -- generate at least 1 body of the wrong type
-        pes <- genAlternatives names' (\c t -> genWellTypedExpr' (n `div` 2) t c genty genval) cts ety
+        pes <- genAlternatives names' ty (\c t -> genWellTypedExpr' (n `div` 2) t c genty genval) cts ety
         bat <- genWellTypedExpr' (n `div` 2) nety names' genty genval
         let pes' = case pes of
               -- TODO could easily include at a random branch
@@ -395,10 +396,10 @@ genIllTypedExpr' n names genty genval =
         ty@(TVariant _ cts) <- genVar
 
         -- construct it wrong
-        (con, tys) <- elements cts
-        fmap (ECon con ty) (for tys $ \t -> do
-          nty <- genty `suchThat` (/= t)
-          genWellTypedExpr' (n `div` (length tys)) nty names genty genval)
+        (con, rtys) <- elements cts
+        fmap (ECon con ty) (for rtys $ \rt -> do
+          nty <- genty `suchThat` (/= (fromRecType ty rt))
+          genWellTypedExpr' (n `div` (length rtys)) nty names genty genval)
 
   in oneOf [badApp, badCase1, badCase2, badCon]
 
