@@ -36,7 +36,7 @@ buildCase n = case n of
 
 tcasey :: Type TestLitT
 tcasey =
-  TVariant (TypeName "Casey") [(Constructor "Casey", [TLit TBool])]
+  TVariant (TypeName "Casey") [(Constructor "Casey", [RType (TLit TBool)])]
 
 main :: IO ()
 main = do

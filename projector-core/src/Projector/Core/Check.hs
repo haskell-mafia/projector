@@ -31,7 +31,7 @@ import qualified Data.Map.Strict as M
 import           P
 
 import           Projector.Core.Syntax (Expr (..), Name (..), Pattern (..))
-import           Projector.Core.Type (Type (..), Constructor (..), Ground (..), typeOf)
+import           Projector.Core.Type (Type (..), Constructor (..), Ground (..), typeOf, fromRecType)
 
 
 data TypeError l
@@ -118,8 +118,9 @@ typeCheck' ctx expr =
           -- Check arity
           unless (length ts == length es) (typeError (BadConstructorArity c ty (length es)))
           -- Typecheck all bnds against expected
-          _ <- listC . with (L.zip ts es) $ \(t1, e) -> do
+          _ <- listC . with (L.zip ts es) $ \(rt, e) -> do
             t2 <- typeCheck' ctx e
+            let t1 = fromRecType ty rt
             unless (t1 == t2) (typeError (Mismatch t1 t2))
           pure ty
 
@@ -152,7 +153,7 @@ checkPattern' ctx ty pat =
           -- check the lists are the same length
           unless (length ts == length pats) (typeError (BadPattern ty pat))
           -- Check all recursive pats against type list
-          foldM (\ctx' (t', p') -> checkPattern' ctx' t' p') ctx (L.zip ts pats)
+          foldM (\ctx' (rt, p') -> checkPattern' ctx' (fromRecType ty rt) p') ctx (L.zip ts pats)
         _ ->
           typeError (BadPattern ty pat)
 
