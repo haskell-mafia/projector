@@ -63,7 +63,12 @@ executable slideshow
   build-depends:
                        base
                      , ambiata-p
+                     , ambiata-projector-core
                      , ambiata-projector-html
+                     , ambiata-x-eithert
+                     , containers
+                     , text
+                     , transformers
 
 
 test-suite test
