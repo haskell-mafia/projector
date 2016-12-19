@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NoImplicitPrelude #-}
@@ -53,6 +56,7 @@ data TypeError l a
   | BadPatternConstructor Constructor (Type l) a
   | NonExhaustiveCase (Expr l a) (Type l) a
   | Blackholed [TypeError l a] a
+  deriving (Functor, Foldable, Traversable)
 
 deriving instance (Eq l, Eq (Value l), Eq a) => Eq (TypeError l a)
 deriving instance (Show l, Show (Value l), Show a) => Show (TypeError l a)
