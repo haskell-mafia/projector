@@ -16,7 +16,6 @@ module Projector.Core.Check (
   , typeCheckAll
   , typeCheckAll'
   , TypeError (..)
-  , ExprDecls (..)
   -- * Guts
   , Check (..)
   , typeError
@@ -64,17 +63,13 @@ deriving instance (Eq l, Eq (Value l), Eq a) => Eq (TypeError l a)
 deriving instance (Show l, Show (Value l), Show a) => Show (TypeError l a)
 deriving instance (Ord l, Ord (Value l), Ord a) => Ord (TypeError l a)
 
-newtype ExprDecls l a = ExprDecls {
-    unExprDecls :: LM.Map Name (Either [TypeError l a] (Expr l (Type l, a)))
-  }
-
 typeCheckAll ::
      Ground l
   => TypeDecls l
   -> Map Name (Expr l a)
   -> Either [TypeError l a] (Map Name (Expr l (Type l, a)))
 typeCheckAll types exprs =
-  -- need to tie the knot here
+  -- Tie the knot; this doesn't quite work with this kind of typechecker
   let knot = fmap (typeTree' types knot) exprs
   in typeCheckAll' knot
 
