@@ -13,7 +13,10 @@ module Projector.Core.Check (
   -- * User interface
     typeCheck
   , typeTree
+  , typeCheckAll
+  , typeCheckAll'
   , TypeError (..)
+  , ExprDecls (..)
   -- * Guts
   , Check (..)
   , typeError
@@ -34,9 +37,8 @@ import           Data.DList (DList)
 import qualified Data.DList as D
 import           Data.Functor.Constant (Constant (..))
 import qualified Data.List as L
+import           Data.Map.Lazy (Map)
 import qualified Data.Map.Lazy as LM
-import           Data.Map.Strict (Map)
-import qualified Data.Map.Strict as M
 
 import           P
 
@@ -62,6 +64,30 @@ deriving instance (Eq l, Eq (Value l), Eq a) => Eq (TypeError l a)
 deriving instance (Show l, Show (Value l), Show a) => Show (TypeError l a)
 deriving instance (Ord l, Ord (Value l), Ord a) => Ord (TypeError l a)
 
+newtype ExprDecls l a = ExprDecls {
+    unExprDecls :: LM.Map Name (Either [TypeError l a] (Expr l (Type l, a)))
+  }
+
+typeCheckAll ::
+     Ground l
+  => TypeDecls l
+  -> Map Name (Expr l a)
+  -> Either [TypeError l a] (Map Name (Expr l (Type l, a)))
+typeCheckAll types exprs =
+  -- need to tie the knot here
+  let knot = fmap (typeTree' types knot) exprs
+  in typeCheckAll' knot
+
+-- like the above, but we don't care where the thunks came from.
+-- e.g. they might be cached results
+typeCheckAll' ::
+     Ground l
+  => Map Name (Either [TypeError l a] (Expr l (Type l, a)))
+  -> Either [TypeError l a] (Map Name (Expr l (Type l, a)))
+typeCheckAll' =
+  sequenceA
+
+-- -----------------------------------------------------------------------------
 
 typeCheck :: Ground l => TypeDecls l -> Expr l a -> Either [TypeError l a] (Type l)
 typeCheck decls =
@@ -73,7 +99,16 @@ typeTree ::
   -> Expr l a
   -> Either [TypeError l a] (Expr l (Type l, a))
 typeTree c =
-  first D.toList . unCheck . typeCheck' c mempty
+  typeTree' c mempty
+
+typeTree' ::
+     Ground l
+  => TypeDecls l
+  -> Map Name (Either [TypeError l a] (Expr l (Type l, a)))
+  -> Expr l a
+  -> Either [TypeError l a] (Expr l (Type l, a))
+typeTree' types exprs =
+  first D.toList . unCheck . typeCheck' types (Ctx mempty exprs)
 
 -- -----------------------------------------------------------------------------
 
@@ -84,7 +119,7 @@ newtype Check l a b = Check {
 -- typing context
 data Ctx l a = Ctx {
     ctxLocal :: Map Name (Type l)
-  , ctxGlobal :: LM.Map Name (Check l a (Expr l (Type l, a)))
+  , ctxGlobal :: Map Name (Either [TypeError l a] (Expr l (Type l, a)))
   }
 
 instance Monoid (Ctx l a) where
@@ -93,11 +128,11 @@ instance Monoid (Ctx l a) where
 
 cextend :: Name -> Type l -> Ctx l a -> Ctx l a
 cextend n t (Ctx l g) =
-  Ctx (M.insert n t l) g
+  Ctx (LM.insert n t l) g
 
 clookup :: a -> Name -> Ctx l a -> Check l a (Type l)
 clookup a n ctx =
-  case (M.lookup n (ctxLocal ctx), LM.lookup n (ctxGlobal ctx)) of
+  case (LM.lookup n (ctxLocal ctx), LM.lookup n (ctxGlobal ctx)) of
     (Just ty, _) ->
       pure ty
     (_, Just e) ->
@@ -105,9 +140,9 @@ clookup a n ctx =
     (Nothing, Nothing) ->
       typeError (FreeVariable n a)
 
-blackhole :: a -> Check l a b -> Check l a b
-blackhole a b =
-  Check (first (D.singleton . flip Blackholed a . D.toList) (unCheck b))
+blackhole :: a -> Either [TypeError l a] b -> Check l a b
+blackhole a =
+  Check . first (D.singleton . flip Blackholed a)
 
 -- As we've got an explicitly-typed calculus, typechecking is
 -- straightforward and syntax-directed. All we have to do is propagate
