@@ -31,6 +31,7 @@ import           Data.DList (DList)
 import qualified Data.DList as D
 import           Data.Functor.Constant (Constant (..))
 import qualified Data.List as L
+import qualified Data.Map.Lazy as LM
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
 
@@ -51,6 +52,7 @@ data TypeError l a
   | BadPatternArity Constructor (Type l) Int Int a
   | BadPatternConstructor Constructor (Type l) a
   | NonExhaustiveCase (Expr l a) (Type l) a
+  | Blackholed [TypeError l a] a
 
 deriving instance (Eq l, Eq (Value l), Eq a) => Eq (TypeError l a)
 deriving instance (Show l, Show (Value l), Show a) => Show (TypeError l a)
@@ -69,7 +71,6 @@ typeTree ::
 typeTree c =
   first D.toList . unCheck . typeCheck' c mempty
 
-
 -- -----------------------------------------------------------------------------
 
 newtype Check l a b = Check {
@@ -77,19 +78,32 @@ newtype Check l a b = Check {
   } deriving (Functor, Applicative, Monad)
 
 -- typing context
-newtype Ctx l = Ctx { unCtx :: Map Name (Type l) }
+data Ctx l a = Ctx {
+    ctxLocal :: Map Name (Type l)
+  , ctxGlobal :: LM.Map Name (Check l a (Expr l (Type l, a)))
+  }
 
-instance Monoid (Ctx l) where
-  mempty = Ctx mempty
-  mappend (Ctx a) (Ctx b) = Ctx (mappend a b)
+instance Monoid (Ctx l a) where
+  mempty = Ctx mempty mempty
+  mappend (Ctx aa ba) (Ctx ab bb) = Ctx (mappend aa ab) (mappend ba bb)
 
-cextend :: Name -> Type l -> Ctx l -> Ctx l
-cextend n t =
-  Ctx . M.insert n t . unCtx
+cextend :: Name -> Type l -> Ctx l a -> Ctx l a
+cextend n t (Ctx l g) =
+  Ctx (M.insert n t l) g
 
-clookup :: Name -> Ctx l -> Maybe (Type l)
-clookup n =
-  M.lookup n . unCtx
+clookup :: a -> Name -> Ctx l a -> Check l a (Type l)
+clookup a n ctx =
+  case (M.lookup n (ctxLocal ctx), LM.lookup n (ctxGlobal ctx)) of
+    (Just ty, _) ->
+      pure ty
+    (_, Just e) ->
+      blackhole a (fmap extractType e)
+    (Nothing, Nothing) ->
+      typeError (FreeVariable n a)
+
+blackhole :: a -> Check l a b -> Check l a b
+blackhole a b =
+  Check (first (D.singleton . flip Blackholed a . D.toList) (unCheck b))
 
 -- As we've got an explicitly-typed calculus, typechecking is
 -- straightforward and syntax-directed. All we have to do is propagate
@@ -97,7 +111,7 @@ clookup n =
 typeCheck' ::
      Ground l
   => TypeDecls l
-  -> Ctx l
+  -> Ctx l a
   -> Expr l a
   -> Check l a (Expr l (Type l, a))
 typeCheck' tc ctx expr =
@@ -105,12 +119,9 @@ typeCheck' tc ctx expr =
     ELit a v ->
       pure (ELit (TLit (typeOf v), a) v)
 
-    EVar a n ->
-      case clookup n ctx of
-        Just t ->
-          pure (EVar (t, a) n)
-        Nothing ->
-          typeError (FreeVariable n a)
+    EVar a n -> do
+      t <- clookup a n ctx
+      pure (EVar (t, a) n)
 
     ELam a n ta e -> do
       e' <- typeCheck' tc (cextend n ta ctx) e
@@ -169,7 +180,7 @@ typeCheck' tc ctx expr =
 checkPattern ::
      Ground l
   => TypeDecls l
-  -> Ctx l
+  -> Ctx l a
   -> Type l
   -> Pattern
   -> Expr l a
@@ -184,10 +195,10 @@ checkPattern' ::
      Ground l
   => a
   -> TypeDecls l
-  -> Ctx l
+  -> Ctx l a
   -> Type l
   -> Pattern
-  -> Check l a (Ctx l)
+  -> Check l a (Ctx l a)
 checkPattern' a tc ctx ty pat =
   case pat of
     PVar x ->
@@ -231,7 +242,7 @@ typeError =
 checkPair ::
      Ground l
   => TypeDecls l
-  -> Ctx l
+  -> Ctx l a
   -> Expr l a
   -> Expr l a
   -> Check l a (Expr l (Type l, a), Expr l (Type l, a))
