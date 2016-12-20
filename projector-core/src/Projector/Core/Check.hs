@@ -21,11 +21,15 @@ module Projector.Core.Check (
   , apC
   -- * Reusable stuff
   , apE
+  , sequenceE
   ) where
 
 
+import           Control.Applicative.Lift  (Lift(..), Errors, runErrors)
+
 import           Data.DList (DList)
 import qualified Data.DList as D
+import           Data.Functor.Constant (Constant (..))
 import qualified Data.List as L
 import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
@@ -253,7 +257,22 @@ apC l r =
 
 -- -----------------------------------------------------------------------------
 
--- A version of 'ap' that accumulates errors.
+-- | Like 'sequenceA', but using the '(<*>)' instance from 'Errors',
+-- which is equivalent to 'apE' (but more general)
+sequenceE :: (Monoid e, Traversable f) => f (Either e a) -> Either e (f a)
+sequenceE =
+  runErrors . traverse liftErrors
+
+liftErrors :: Monoid e => Either e a -> Errors e a
+liftErrors e =
+  case e of
+    Left es ->
+      Other (Constant es)
+
+    Right a ->
+      Pure a
+
+-- | A version of 'ap' that accumulates errors.
 -- Useful when expressions do not relate to one another at all.
 apE :: Monoid e => Either e (a -> b) -> Either e a -> Either e b
 apE l r =
@@ -266,4 +285,3 @@ apE l r =
       Left b
     (Left a, Left b) ->
       Left (a <> b)
-
