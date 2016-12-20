@@ -80,7 +80,7 @@ typeCheckAll' ::
   => Map Name (Either [TypeError l a] (Expr l (Type l, a)))
   -> Either [TypeError l a] (Map Name (Expr l (Type l, a)))
 typeCheckAll' =
-  sequenceA -- probably want to gather all the errors here
+  sequenceE
 
 -- -----------------------------------------------------------------------------
 
