@@ -114,6 +114,9 @@ ppTypeError' err =
            [ "Pattern matches are non-exhaustive for an expression of type"
            , ppType ty
            ])
+    Blackholed _es a ->
+      WL.annotate a $
+        text "Typechecking blocked by other type errors"
 
 -- -----------------------------------------------------------------------------
 

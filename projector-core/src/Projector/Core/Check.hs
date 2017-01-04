@@ -1,3 +1,6 @@
+{-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NoImplicitPrelude #-}
@@ -10,6 +13,8 @@ module Projector.Core.Check (
   -- * User interface
     typeCheck
   , typeTree
+  , typeCheckAll
+  , typeCheckAll'
   , TypeError (..)
   -- * Guts
   , Check (..)
@@ -21,14 +26,18 @@ module Projector.Core.Check (
   , apC
   -- * Reusable stuff
   , apE
+  , sequenceE
   ) where
 
 
+import           Control.Applicative.Lift  (Lift(..), Errors, runErrors)
+
 import           Data.DList (DList)
 import qualified Data.DList as D
+import           Data.Functor.Constant (Constant (..))
 import qualified Data.List as L
-import           Data.Map.Strict (Map)
-import qualified Data.Map.Strict as M
+import           Data.Map.Lazy (Map)
+import qualified Data.Map.Lazy as LM
 
 import           P
 
@@ -47,11 +56,33 @@ data TypeError l a
   | BadPatternArity Constructor (Type l) Int Int a
   | BadPatternConstructor Constructor (Type l) a
   | NonExhaustiveCase (Expr l a) (Type l) a
+  | Blackholed [TypeError l a] a
+  deriving (Functor, Foldable, Traversable)
 
 deriving instance (Eq l, Eq (Value l), Eq a) => Eq (TypeError l a)
 deriving instance (Show l, Show (Value l), Show a) => Show (TypeError l a)
 deriving instance (Ord l, Ord (Value l), Ord a) => Ord (TypeError l a)
 
+typeCheckAll ::
+     Ground l
+  => TypeDecls l
+  -> Map Name (Expr l a)
+  -> Either [TypeError l a] (Map Name (Expr l (Type l, a)))
+typeCheckAll types exprs =
+  -- Tie the knot; this doesn't quite work with this kind of typechecker
+  let knot = fmap (typeTree' types knot) exprs
+  in typeCheckAll' knot
+
+-- like the above, but we don't care where the thunks came from.
+-- e.g. they might be cached results
+typeCheckAll' ::
+     Ground l
+  => Map Name (Either [TypeError l a] (Expr l (Type l, a)))
+  -> Either [TypeError l a] (Map Name (Expr l (Type l, a)))
+typeCheckAll' =
+  sequenceE
+
+-- -----------------------------------------------------------------------------
 
 typeCheck :: Ground l => TypeDecls l -> Expr l a -> Either [TypeError l a] (Type l)
 typeCheck decls =
@@ -63,8 +94,16 @@ typeTree ::
   -> Expr l a
   -> Either [TypeError l a] (Expr l (Type l, a))
 typeTree c =
-  first D.toList . unCheck . typeCheck' c mempty
+  typeTree' c mempty
 
+typeTree' ::
+     Ground l
+  => TypeDecls l
+  -> Map Name (Either [TypeError l a] (Expr l (Type l, a)))
+  -> Expr l a
+  -> Either [TypeError l a] (Expr l (Type l, a))
+typeTree' types exprs =
+  first D.toList . unCheck . typeCheck' types (Ctx mempty exprs)
 
 -- -----------------------------------------------------------------------------
 
@@ -73,19 +112,32 @@ newtype Check l a b = Check {
   } deriving (Functor, Applicative, Monad)
 
 -- typing context
-newtype Ctx l = Ctx { unCtx :: Map Name (Type l) }
+data Ctx l a = Ctx {
+    ctxLocal :: Map Name (Type l)
+  , ctxGlobal :: Map Name (Either [TypeError l a] (Expr l (Type l, a)))
+  }
 
-instance Monoid (Ctx l) where
-  mempty = Ctx mempty
-  mappend (Ctx a) (Ctx b) = Ctx (mappend a b)
+instance Monoid (Ctx l a) where
+  mempty = Ctx mempty mempty
+  mappend (Ctx aa ba) (Ctx ab bb) = Ctx (mappend aa ab) (mappend ba bb)
 
-cextend :: Name -> Type l -> Ctx l -> Ctx l
-cextend n t =
-  Ctx . M.insert n t . unCtx
+cextend :: Name -> Type l -> Ctx l a -> Ctx l a
+cextend n t (Ctx l g) =
+  Ctx (LM.insert n t l) g
 
-clookup :: Name -> Ctx l -> Maybe (Type l)
-clookup n =
-  M.lookup n . unCtx
+clookup :: a -> Name -> Ctx l a -> Check l a (Type l)
+clookup a n ctx =
+  case (LM.lookup n (ctxLocal ctx), LM.lookup n (ctxGlobal ctx)) of
+    (Just ty, _) ->
+      pure ty
+    (_, Just e) ->
+      blackhole a (fmap extractType e)
+    (Nothing, Nothing) ->
+      typeError (FreeVariable n a)
+
+blackhole :: a -> Either [TypeError l a] b -> Check l a b
+blackhole a =
+  Check . first (D.singleton . flip Blackholed a)
 
 -- As we've got an explicitly-typed calculus, typechecking is
 -- straightforward and syntax-directed. All we have to do is propagate
@@ -93,7 +145,7 @@ clookup n =
 typeCheck' ::
      Ground l
   => TypeDecls l
-  -> Ctx l
+  -> Ctx l a
   -> Expr l a
   -> Check l a (Expr l (Type l, a))
 typeCheck' tc ctx expr =
@@ -101,12 +153,9 @@ typeCheck' tc ctx expr =
     ELit a v ->
       pure (ELit (TLit (typeOf v), a) v)
 
-    EVar a n ->
-      case clookup n ctx of
-        Just t ->
-          pure (EVar (t, a) n)
-        Nothing ->
-          typeError (FreeVariable n a)
+    EVar a n -> do
+      t <- clookup a n ctx
+      pure (EVar (t, a) n)
 
     ELam a n ta e -> do
       e' <- typeCheck' tc (cextend n ta ctx) e
@@ -165,7 +214,7 @@ typeCheck' tc ctx expr =
 checkPattern ::
      Ground l
   => TypeDecls l
-  -> Ctx l
+  -> Ctx l a
   -> Type l
   -> Pattern
   -> Expr l a
@@ -180,10 +229,10 @@ checkPattern' ::
      Ground l
   => a
   -> TypeDecls l
-  -> Ctx l
+  -> Ctx l a
   -> Type l
   -> Pattern
-  -> Check l a (Ctx l)
+  -> Check l a (Ctx l a)
 checkPattern' a tc ctx ty pat =
   case pat of
     PVar x ->
@@ -227,7 +276,7 @@ typeError =
 checkPair ::
      Ground l
   => TypeDecls l
-  -> Ctx l
+  -> Ctx l a
   -> Expr l a
   -> Expr l a
   -> Check l a (Expr l (Type l, a), Expr l (Type l, a))
@@ -253,7 +302,22 @@ apC l r =
 
 -- -----------------------------------------------------------------------------
 
--- A version of 'ap' that accumulates errors.
+-- | Like 'sequenceA', but using the '(<*>)' instance from 'Errors',
+-- which is equivalent to 'apE' (but more general)
+sequenceE :: (Monoid e, Traversable f) => f (Either e a) -> Either e (f a)
+sequenceE =
+  runErrors . traverse liftErrors
+
+liftErrors :: Monoid e => Either e a -> Errors e a
+liftErrors e =
+  case e of
+    Left es ->
+      Other (Constant es)
+
+    Right a ->
+      Pure a
+
+-- | A version of 'ap' that accumulates errors.
 -- Useful when expressions do not relate to one another at all.
 apE :: Monoid e => Either e (a -> b) -> Either e a -> Either e b
 apE l r =
@@ -266,4 +330,3 @@ apE l r =
       Left b
     (Left a, Left b) ->
       Left (a <> b)
-
