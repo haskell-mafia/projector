@@ -9,9 +9,16 @@ import           P
 
 
 data Token =
-  -- Type signatures
+  -- Type signatures (OLD FORMAT)
+    TypeSigStart          -- \
+  | TypeSigSep            -- ;
+  | TypeSigEnd            -- ->
+  | TypeSig               -- :
+  | TypeIdent Text        -- foo | Foo
+  | TypeLParen            -- (
+  | TypeRParen            -- )
   -- HTML mode
-    TagOpen               -- <
+  | TagOpen               -- <
   | TagClose              -- >
   | TagCloseOpen          -- </
   | TagSelfClose          -- />
@@ -36,6 +43,7 @@ data Token =
   | ExprConId Text        -- Maybe
   | ExprVarId Text        -- id
   | ExprLamStart          -- \
+  | ExprDot               -- .
   | ExprCommentStart      -- {-
   | ExprCommentChunk Text -- foo
   | ExprCommentEnd        -- -}

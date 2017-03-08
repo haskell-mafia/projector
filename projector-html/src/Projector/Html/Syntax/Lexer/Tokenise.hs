@@ -72,10 +72,12 @@ pop =
 data LexerMode =
     HtmlMode
   | HtmlCommentMode
-  | TagMode
+  | TagOpenMode
+  | TagCloseMode
   | ExprMode
   | ExprCommentMode
   | StringMode
+  | TypeSigMode
   deriving (Eq, Ord, Show)
 
 satisfyMode :: LexerMode -> Parser ()
@@ -144,16 +146,67 @@ failWith err =
 
 template :: Parser [Positioned Token]
 template =
-  push HtmlMode *> many (withPosition token)
+  start *> many (withPosition token)
+
+start :: Parser ()
+start =
+      (P.lookAhead (P.try (typeSigStart)) *> push TypeSigMode)
+  <|> push HtmlMode
 
 token :: Parser Token
 token =
       (satisfyMode HtmlMode *> htmlToken)
   <|> (satisfyMode HtmlCommentMode *> htmlCommentToken)
-  <|> (satisfyMode TagMode *> tagToken)
+  <|> (satisfyMode TagOpenMode *> tagOpenToken)
+  <|> (satisfyMode TagCloseMode *> tagCloseToken)
   <|> (satisfyMode ExprMode *> exprToken)
   <|> (satisfyMode ExprCommentMode *> exprCommentToken)
   <|> (satisfyMode StringMode *> stringToken)
+  <|> (satisfyMode TypeSigMode *> typeSigToken)
+
+
+-- -----------------------------------------------------------------------------
+-- Type sig mode
+
+typeSigToken :: Parser Token
+typeSigToken =
+      whitespace
+  <|> newline
+  <|> typeIdent
+  <|> typeLParen
+  <|> typeRParen
+  <|> typeSig
+  <|> typeSigStart
+  <|> typeSigSep
+  <|> typeSigEnd
+
+typeSigStart :: Parser Token
+typeSigStart =
+  char '\\' *> pure TypeSigStart
+
+typeIdent :: Parser Token
+typeIdent =
+  fmap (TypeIdent . T.pack) (some P.alphaNumChar)
+
+typeLParen :: Parser Token
+typeLParen =
+  char '(' *> pure TypeLParen
+
+typeRParen :: Parser Token
+typeRParen =
+  char ')' *> pure TypeRParen
+
+typeSig :: Parser Token
+typeSig =
+  char ':' *> pure TypeSig
+
+typeSigSep :: Parser Token
+typeSigSep =
+  char ';' *> pure TypeSigSep
+
+typeSigEnd :: Parser Token
+typeSigEnd =
+  string "->" *> pure TypeSigEnd <* pop
 
 
 -- -----------------------------------------------------------------------------
@@ -172,11 +225,11 @@ htmlToken =
 
 tagOpen :: Parser Token
 tagOpen =
-  char '<' *> pure TagOpen <* push TagMode
+  char '<' *> pure TagOpen <* push TagOpenMode
 
 tagCloseOpen :: Parser Token
 tagCloseOpen =
-  string "</" *> pure TagCloseOpen <* push TagMode
+  string "</" *> pure TagCloseOpen <* push TagCloseMode
 
 plainText :: Parser Token
 plainText =
@@ -197,7 +250,7 @@ tagCommentStart =
   string "<!--" *> pure TagCommentStart <* push HtmlCommentMode
 
 -- -----------------------------------------------------------------------------
--- HTML comments
+-- HTML comments - these can't be nested, they halt on the first '-->'
 
 htmlCommentToken :: Parser Token
 htmlCommentToken =
@@ -211,31 +264,33 @@ tagCommentChunk =
 tagCommentEnd :: Parser Token
 tagCommentEnd =
   -- We actually break on -- and expect TagClose
-  string "--" *> pure TagCommentEnd <* pop <* push TagMode
+  string "--" *> pure TagCommentEnd <* push TagCloseMode
 
 -- -----------------------------------------------------------------------------
--- Tag mode
+-- Tag Open mode (e.g. <a href>)
 
-tagToken :: Parser Token
-tagToken =
+tagOpenToken :: Parser Token
+tagOpenToken =
       whitespace
   <|> newline
   <|> tagEquals
-  <|> tagClose
+  <|> tagOpenClose
   <|> tagSelfClose
   <|> tagIdent
   <|> tagStringStart
+  <|> exprStart
+
 
 tagIdent :: Parser Token
 tagIdent =
-  TagIdent . T.pack <$> some P.letterChar
+  TagIdent . T.pack <$> ((:) <$> P.letterChar <*> many P.alphaNumChar)
 
 tagEquals :: Parser Token
 tagEquals =
   char '=' *> pure TagEquals
 
-tagClose :: Parser Token
-tagClose =
+tagOpenClose :: Parser Token
+tagOpenClose =
   char '>' *> pure TagClose <* pop <* push HtmlMode
 
 tagSelfClose :: Parser Token
@@ -245,6 +300,21 @@ tagSelfClose =
 tagStringStart :: Parser Token
 tagStringStart =
   char '"' *> pure StringStart <* push StringMode
+
+
+-- -----------------------------------------------------------------------------
+-- Tag Close mode (e.g. </a>
+
+tagCloseToken :: Parser Token
+tagCloseToken =
+      whitespace
+  <|> newline
+  <|> tagCloseClose
+  <|> tagIdent
+
+tagCloseClose :: Parser Token
+tagCloseClose =
+  char '>'*> pure TagClose <* pop <* pop
 
 -- -----------------------------------------------------------------------------
 -- Expression tokens
@@ -264,6 +334,7 @@ exprToken =
   <|> exprCaseSep
   <|> exprLamStart
   <|> exprArrow
+  <|> exprDot
   <|> exprCommentStart
   <|> exprStart
   <|> exprEnd
@@ -312,6 +383,10 @@ exprCaseSep :: Parser Token
 exprCaseSep =
   char ';' *> pure ExprCaseSep
 
+exprDot :: Parser Token
+exprDot =
+  char '.' *> pure ExprDot
+
 exprLamStart :: Parser Token
 exprLamStart =
   char '\\' *> pure ExprLamStart
@@ -334,10 +409,10 @@ exprVarId =
 
 exprHtmlStart :: Parser Token
 exprHtmlStart =
-  char '<' *> pure TagOpen <* push HtmlMode <* push TagMode
+  char '<' *> pure TagOpen <* push TagOpenMode
 
 -- -----------------------------------------------------------------------------
--- Expr comments
+-- Expr comments - unlike HTML, these can be nested {- foo {- bar -} baz -}
 
 exprCommentToken :: Parser Token
 exprCommentToken =
@@ -395,6 +470,7 @@ newline =
 
 
 -- -----------------------------------------------------------------------------
+-- low level parsers
 
 someTill' :: Parser m -> Parser end -> Parser [m]
 someTill' m end =
