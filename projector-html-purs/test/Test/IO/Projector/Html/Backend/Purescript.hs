@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 module Test.IO.Projector.Html.Backend.Purescript where
@@ -19,8 +20,8 @@ import           Projector.Html.Backend.Purescript
 import           Projector.Html.Data.Annotation
 import           Projector.Html.Data.Module
 import           Projector.Html.Data.Prim
-import qualified Projector.Html.Core.Library as Lib
 import qualified Projector.Html.Core.Prim as Prim
+import qualified Projector.Html.Core.Library as Lib
 
 import           System.Process (CreateProcess (..), proc, readCreateProcessWithExitCode)
 
@@ -35,7 +36,7 @@ prop_empty_module =
 
 prop_library_module =
   once . modulePropCheck baseDecls (ModuleName "Test.Purescript.Library") $ Module {
-      moduleTypes = baseDecls
+      moduleTypes = mempty
     , moduleImports = mempty
     , moduleExprs = M.fromList [
           helloWorld
@@ -52,6 +53,8 @@ prop_welltyped =
             moduleTypes = decls
           , moduleExprs = moduleExprs modl
           }
+
+
 
 -- -----------------------------------------------------------------------------
 
