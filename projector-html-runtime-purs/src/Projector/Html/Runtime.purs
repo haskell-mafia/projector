@@ -6,6 +6,7 @@ module Projector.Html.Runtime (
   ) where
 
 import Control.Monad as Monad
+import Data.Array as Array
 import Data.String as String
 import Prelude ((<>))
 

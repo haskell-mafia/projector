@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 module Test.IO.Projector.Html.Backend.Purescript where
@@ -52,6 +53,8 @@ prop_welltyped =
             moduleTypes = decls
           , moduleExprs = moduleExprs modl
           }
+
+
 
 -- -----------------------------------------------------------------------------
 

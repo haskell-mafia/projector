@@ -30,6 +30,8 @@ library
                        Paths_ambiata_projector_html_purs
 
                        Projector.Html.Backend.Purescript
+                       Projector.Html.Backend.Purescript.Prim
+                       Projector.Html.Backend.Purescript.Rewrite
 
 
 test-suite test-io
