@@ -23,12 +23,12 @@ import           Projector.Html.Data.Prim
 
 rewriteModule :: ModuleName -> Module HtmlType PrimT a -> (ModuleName, Module HtmlType PrimT a)
 rewriteModule mn (Module tys imports exprs) =
-  let exprs' = fmap (\(ModuleExpr ty e) -> ModuleExpr ty (rewriteFix (Rewrite.globalRules <> rules) e)) exprs
+  let exprs' = fmap (\(ModuleExpr ty e) -> ModuleExpr ty (rewriteExpr e)) exprs
   in (mn, Module tys imports exprs')
 
 rewriteExpr :: Expr PrimT a -> Expr PrimT a
 rewriteExpr =
-  Core.rewrite (Rewrite.globalRules <> rules)
+  Core.rewriteFix rules . Core.rewriteFix Rewrite.globalRules
 
 -- * Drop all comments, they don't make sense in virtual-dom world
 -- * Replace constructors with DOMLike typeclass methods
