@@ -66,7 +66,10 @@ renderModule :: ModuleName -> Module HtmlType PrimT (HtmlType, a) -> Either Pure
 renderModule mn@(ModuleName n) m = do
   let (_mn', m') = second toPurescriptModule (Rewrite.rewriteModule mn m)
       modName = T.unwords ["module", n, "where"]
-      imports = (htmlRuntime, OpenImport) : (M.toList (moduleImports m'))
+      imports = (htmlRuntime, OpenImport)
+              : (htmlRuntimePux, ImportQualified)
+              : (puxHtmlElements, ImportQualifiedAs (ModuleName "Pux"))
+              : (M.toList (moduleImports m'))
       importText = fmap (uncurry genImport) imports
   decls <- fmap (fmap prettyUndecorated) (genModule m')
   pure (genFileName mn, T.unlines $ mconcat [
@@ -95,7 +98,9 @@ genImport (ModuleName n) imports =
     OnlyImport funs ->
       "import " <> n <> " (" <> T.intercalate ", " (fmap unName funs) <> ")"
     ImportQualified ->
-      "import qualified " <> n
+      "import " <> n <> " as " <> n
+    ImportQualifiedAs (ModuleName as) ->
+      "import " <> n <> " as " <> as
 
 genFileName :: ModuleName -> FilePath
 genFileName (ModuleName n) =
@@ -105,6 +110,13 @@ htmlRuntime :: ModuleName
 htmlRuntime =
   ModuleName "Projector.Html.Runtime"
 
+htmlRuntimePux :: ModuleName
+htmlRuntimePux =
+  ModuleName "Projector.Html.Runtime.Pux"
+
+puxHtmlElements :: ModuleName
+puxHtmlElements =
+  ModuleName "Pux.Html.Elements"
 
 -- -----------------------------------------------------------------------------
 
@@ -155,7 +167,7 @@ genType ty =
 
 genTypeSig :: Name -> PurescriptType -> Doc a
 genTypeSig (Name n) ty =
-  WL.hang 2 (text n <+> "::" <+> "forall html attr. DOMLike html attr =>" <+> genType ty)
+  WL.hang 2 (text n <+> "::" <+> "forall ev." <+> genType ty)
 
 genExpDec :: Name -> PurescriptExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
 genExpDec (Name n) expr = do

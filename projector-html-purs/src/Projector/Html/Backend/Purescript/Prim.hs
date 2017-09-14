@@ -82,18 +82,17 @@ swapLibTypes ty =
     TArrow t2 t3 ->
       TArrow (swapLibTypes t2) (swapLibTypes t3)
     TVar (TypeName "Html") ->
-      TVar (TypeName "html")
+      TVar (TypeName "(Array (Pux.Html ev))")
     TVar (TypeName "Attribute") ->
-      TVar (TypeName "attr")
+      TVar (TypeName "(Pux.Attribute ev)")
     TVar (TypeName "AttributeKey") ->
-      TVar (TypeName "akey")
+      TVar (TypeName "String")
     TVar (TypeName "AttributeValue") ->
-      TVar (TypeName "aval")
+      TVar (TypeName "String")
     TVar (TypeName "Tag") ->
-      -- FIXME type alias to string???
-      TVar (TypeName "Projector.Html.Runtime.Tag")
+      TVar (TypeName "String")
     TVar (TypeName "Bool") ->
-      TVar (TypeName "Projector.Html.Runtime.Boolean")
+      TVar (TypeName "Boolean")
     _ ->
       ty
 
