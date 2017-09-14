@@ -264,7 +264,7 @@ genLit :: Value PurescriptPrimT -> Doc a
 genLit v =
   case v of
     PTextV x ->
-      WL.dquotes (text x)
+      show x
 
 -- -----------------------------------------------------------------------------
 

@@ -140,9 +140,9 @@ qualifyConstructor c =
       pure $ Constructor "Projector.Html.Runtime.AttributeValue"
 --}
     Constructor "True" ->
-      pure $ Constructor "Projector.Html.Runtime.true"
+      pure $ Constructor "true"
     Constructor "False" ->
-      pure $ Constructor "Projector.Html.Runtime.false"
+      pure $ Constructor "false"
     _ ->
       empty
 
