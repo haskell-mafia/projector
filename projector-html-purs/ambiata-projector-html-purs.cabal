@@ -19,6 +19,7 @@ library
                      , annotated-wl-pprint             == 0.7.*
                      , containers                      == 0.5.*
                      , text                            == 1.2.*
+                     , transformers                    >= 0.4        && < 0.7
 
   ghc-options:
                        -Wall
