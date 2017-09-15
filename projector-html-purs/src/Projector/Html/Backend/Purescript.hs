@@ -67,6 +67,7 @@ renderModule mn@(ModuleName n) m = do
   let (_mn', m') = second toPurescriptModule (Rewrite.rewriteModule mn m)
       modName = T.unwords ["module", n, "where"]
       imports = (htmlRuntime, OpenImport)
+              : (htmlRuntime, ImportQualified)
               : (htmlRuntimePux, ImportQualified)
               : (puxHtmlElements, ImportQualifiedAs (ModuleName "Pux"))
               : hackImports (M.toList (moduleImports m'))
