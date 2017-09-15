@@ -69,7 +69,7 @@ renderModule mn@(ModuleName n) m = do
       imports = (htmlRuntime, OpenImport)
               : (htmlRuntimePux, ImportQualified)
               : (puxHtmlElements, ImportQualifiedAs (ModuleName "Pux"))
-              : (M.toList (moduleImports m'))
+              : hackImports (M.toList (moduleImports m'))
       importText = fmap (uncurry genImport) imports
   decls <- fmap (fmap prettyUndecorated) (genModule m')
   pure (genFileName mn, T.unlines $ mconcat [
@@ -77,6 +77,12 @@ renderModule mn@(ModuleName n) m = do
     , importText
     , decls
     ])
+
+-- This is pretty bad
+hackImports :: [(ModuleName, Imports)] -> [(ModuleName, Imports)]
+hackImports [] = []
+hackImports (a@(ModuleName mn, _):ms) =
+  a : (ModuleName mn, ImportQualified) : hackImports ms
 
 renderExpr :: Name -> HtmlExpr (HtmlType, a) -> Either PurescriptError Text
 renderExpr n =

@@ -3,10 +3,12 @@ module Projector.Html.Runtime (
   , concat
   , fold
   , isEmpty
+  , map
   ) where
 
 import Control.Monad as Monad
 import Data.Array as Array
+import Data.Functor as Functor
 import Data.String as String
 import Prelude ((<>))
 
@@ -25,3 +27,7 @@ fold =
 isEmpty :: forall a. Array a -> Boolean
 isEmpty =
   Array.null
+
+map :: forall f a b. Functor.Functor f => (a -> b) -> f a -> f b
+map =
+  Functor.map
