@@ -1,5 +1,6 @@
 module Projector.Html.Runtime.Pux (
-    text
+    Html
+  , text
   , textUnescaped
   , parent
   , void
@@ -14,36 +15,41 @@ import Prelude
 import Pux.Html.Attributes (attr) as Pux
 import Pux.Html.Elements (Html, Attribute, element, text) as Pux
 
+-- FIXME
+-- For now, we need to export something called Html for use in
+-- Machinator datatypes. This is a hack that should be dealt with
+-- some other way, but let's just get it compiling first.
+type Html = forall ev. Array (Pux.Html ev)
+
 
 -- Pux 6 Html doesn't have a valid fold/concat, so we resort to this
 -- awful hack: Everything must be an array.
 --
--- The array concatenation here will lead to remarkably poor
+-- The nested array concatenation here will lead to remarkably poor
 -- performance. We just have to live with this until we can upgrade
 -- to the newer version of Pux, or something else based on Smolder.
-type Html ev = Array (Pux.Html ev)
 
-text :: forall ev. String -> Html ev
+text :: forall ev. String -> Array (Pux.Html ev)
 text =
   Array.singleton <<< Pux.text
 
-textUnescaped :: forall ev. String -> Html ev
+textUnescaped :: forall ev. String -> Array (Pux.Html ev)
 textUnescaped =
   Array.singleton <<< Pux.text
 
-parent :: forall ev. String -> Array (Pux.Attribute ev) -> Array (Html ev) -> Html ev
+parent :: forall ev. String -> Array (Pux.Attribute ev) -> Array (Array (Pux.Html ev)) -> Array (Pux.Html ev)
 parent name attrs =
   Array.singleton <<< runFn3 Pux.element name attrs <<< Array.concat
 
-void :: forall ev. String -> Array (Pux.Attribute ev) -> Html ev
+void :: forall ev. String -> Array (Pux.Attribute ev) -> Array (Pux.Html ev)
 void name attrs =
   Array.singleton (runFn3 Pux.element name attrs [])
 
-fold :: forall ev. Array (Html ev) -> Html ev
+fold :: forall ev. Array (Array (Pux.Html ev)) -> Array (Pux.Html ev)
 fold =
   Array.concat
 
-blank :: forall ev. Html ev
+blank :: forall ev. Array (Pux.Html ev)
 blank =
   []
 
