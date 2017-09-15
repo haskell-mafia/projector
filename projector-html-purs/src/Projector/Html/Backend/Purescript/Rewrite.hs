@@ -86,6 +86,16 @@ rules mmn =
              _ ->
                empty)
 
+    -- Bool constructors
+    , (\case ECon a (Constructor "True") b k ->
+               pure (ECon a (Constructor "true") b k)
+             _ ->
+               empty)
+    , (\case ECon a (Constructor "False") b k ->
+               pure (ECon a (Constructor "false") b k)
+             _ ->
+               empty)
+
       -- Qualify imports for runtime functions and constructors.
     , (\case EForeign a (Name "append") ty ->
                pure (EForeign a (Name "Projector.Html.Runtime.append") ty)
