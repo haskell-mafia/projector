@@ -19,6 +19,8 @@ import           P
 
 import           Projector.Core
 
+import           Projector.Html.Backend.Purescript.Prim
+import qualified Projector.Html.Backend.Purescript.Rewrite as Rewrite
 import           Projector.Html.Core
 import           Projector.Html.Data.Backend hiding (Backend (..))
 import qualified Projector.Html.Data.Backend as BE
@@ -62,21 +64,32 @@ predicates = [
 
 renderModule :: ModuleName -> Module HtmlType PrimT (HtmlType, a) -> Either PurescriptError (FilePath, Text)
 renderModule mn@(ModuleName n) m = do
-  let modName = T.unwords ["module", n, "where"]
-      imports = (htmlRuntime, OpenImport) : (M.toList (moduleImports m))
+  let (_mn', m') = second toPurescriptModule (Rewrite.rewriteModule mn m)
+      modName = T.unwords ["module", n, "where"]
+      imports = (htmlRuntime, OpenImport)
+              : (htmlRuntime, ImportQualified)
+              : (htmlRuntimePux, ImportQualified)
+              : (puxHtmlElements, ImportQualifiedAs (ModuleName "Pux"))
+              : hackImports (M.toList (moduleImports m'))
       importText = fmap (uncurry genImport) imports
-  decls <- fmap (fmap prettyUndecorated) (genModule m)
+  decls <- fmap (fmap prettyUndecorated) (genModule m')
   pure (genFileName mn, T.unlines $ mconcat [
       [modName]
     , importText
     , decls
     ])
 
+-- This is pretty bad
+hackImports :: [(ModuleName, Imports)] -> [(ModuleName, Imports)]
+hackImports [] = []
+hackImports (a@(ModuleName mn, _):ms) =
+  a : (ModuleName mn, ImportQualified) : hackImports ms
+
 renderExpr :: Name -> HtmlExpr (HtmlType, a) -> Either PurescriptError Text
 renderExpr n =
-  fmap prettyUndecorated . genExpDec n
+  fmap prettyUndecorated . genExpDec n . toPurescriptExpr . Rewrite.rewriteExpr Nothing
 
-genModule :: Module HtmlType PrimT (HtmlType, a) -> Either PurescriptError [Doc (HtmlType, a)]
+genModule :: PurescriptModule (HtmlType, a) -> Either PurescriptError [Doc (HtmlType, a)]
 genModule (Module ts _ es) = do
   let tdecs = genTypeDecs ts
   decs <- for (M.toList es) $ \(n, ModuleExpr ty e) -> do
@@ -92,7 +105,9 @@ genImport (ModuleName n) imports =
     OnlyImport funs ->
       "import " <> n <> " (" <> T.intercalate ", " (fmap unName funs) <> ")"
     ImportQualified ->
-      "import qualified " <> n
+      "import " <> n <> " as " <> n
+    ImportQualifiedAs (ModuleName as) ->
+      "import " <> n <> " as " <> as
 
 genFileName :: ModuleName -> FilePath
 genFileName (ModuleName n) =
@@ -102,14 +117,21 @@ htmlRuntime :: ModuleName
 htmlRuntime =
   ModuleName "Projector.Html.Runtime"
 
+htmlRuntimePux :: ModuleName
+htmlRuntimePux =
+  ModuleName "Projector.Html.Runtime.Pux"
+
+puxHtmlElements :: ModuleName
+puxHtmlElements =
+  ModuleName "Pux.Html.Elements"
 
 -- -----------------------------------------------------------------------------
 
-genTypeDecs :: HtmlDecls -> [Doc a]
+genTypeDecs :: PurescriptDecls -> [Doc a]
 genTypeDecs =
   fmap (uncurry genTypeDec) . M.toList . unTypeDecls
 
-genTypeDec :: TypeName -> HtmlDecl -> Doc a
+genTypeDec :: TypeName -> PurescriptDecl -> Doc a
 genTypeDec (TypeName n) ty =
   case ty of
     DVariant cts ->
@@ -128,11 +150,11 @@ genTypeDec (TypeName n) ty =
               WL.<$$> WL.rbrace)
         ]
 
-genCon :: Constructor -> [HtmlType] -> Doc a
+genCon :: Constructor -> [PurescriptType] -> Doc a
 genCon (Constructor c) ts =
   WL.hang 2 (text c WL.<> foldl' (<+>) WL.empty (fmap genType ts))
 
-genType :: HtmlType -> Doc a
+genType :: PurescriptType -> Doc a
 genType ty =
   case ty of
     Type (TLitF l) ->
@@ -150,16 +172,16 @@ genType ty =
     Type (TForallF ts t1) ->
       WL.parens (text "forall" <+> text (T.unwords $ fmap unTypeName ts) WL.<> text "." <+> genType t1)
 
-genTypeSig :: Name -> HtmlType -> Doc a
+genTypeSig :: Name -> PurescriptType -> Doc a
 genTypeSig (Name n) ty =
-  WL.hang 2 (text n <+> "::" <+> genType ty)
+  WL.hang 2 (text n <+> "::" <+> "forall ev." <+> genType ty)
 
-genExpDec :: Name -> HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
+genExpDec :: Name -> PurescriptExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
 genExpDec (Name n) expr = do
   e <- genExp expr
   pure (WL.hang 2 (text n <+> text "=" WL.<$$> e))
 
-genExp :: HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
+genExp :: PurescriptExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
 genExp expr =
   case expr of
     ELit a v ->
@@ -213,14 +235,14 @@ genExp expr =
     EHole _ ->
       Left TypeHolePresent
 
-fieldInst :: FieldName -> HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
+fieldInst :: FieldName -> PurescriptExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
 fieldInst (FieldName fn) expr = do
   expr' <- genExp expr
   pure (text (fn <> ":") <+> expr')
 
 -- This is the only type-directed part of purescript codegen.
 -- Could potentially get rid of this with purescript-newtype unwrap.
-genRecordPrj :: HtmlExpr (HtmlType, a) -> FieldName -> Either PurescriptError (Doc (HtmlType, a))
+genRecordPrj :: PurescriptExpr (HtmlType, a) -> FieldName -> Either PurescriptError (Doc (HtmlType, a))
 genRecordPrj e (FieldName fn) =
   case extractAnnotation e of
     (TVar (TypeName recName), _) -> do
@@ -230,7 +252,7 @@ genRecordPrj e (FieldName fn) =
     (_, _) ->
       Left RecordTypeInvariant
 
-genMatch :: Pattern (HtmlType, a) -> HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
+genMatch :: Pattern (HtmlType, a) -> PurescriptExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
 genMatch p e = do
   e' <- genExp e
   pure (WL.hang 2 ((genPat p WL.<> text " ->") WL.<$$> e'))
@@ -245,11 +267,11 @@ genPat p =
     PWildcard a ->
       WL.annotate a (text "_")
 
-genLit :: Value PrimT -> Doc a
+genLit :: Value PurescriptPrimT -> Doc a
 genLit v =
   case v of
-    VString x ->
-      WL.dquotes (text x)
+    PTextV x ->
+      WL.string (show x)
 
 -- -----------------------------------------------------------------------------
 
