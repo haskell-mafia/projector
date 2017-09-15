@@ -87,7 +87,7 @@ hackImports (a@(ModuleName mn, _):ms) =
 
 renderExpr :: Name -> HtmlExpr (HtmlType, a) -> Either PurescriptError Text
 renderExpr n =
-  fmap prettyUndecorated . genExpDec n . toPurescriptExpr . Rewrite.rewriteExpr
+  fmap prettyUndecorated . genExpDec n . toPurescriptExpr . Rewrite.rewriteExpr Nothing
 
 genModule :: PurescriptModule (HtmlType, a) -> Either PurescriptError [Doc (HtmlType, a)]
 genModule (Module ts _ es) = do

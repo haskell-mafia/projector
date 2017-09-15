@@ -11,6 +11,8 @@ module Projector.Html.Backend.Purescript.Rewrite (
 
 import qualified Control.Monad.Trans.State as State
 
+import qualified Data.Text as T
+
 import           P
 
 import           Projector.Core
@@ -23,17 +25,17 @@ import           Projector.Html.Data.Prim
 
 rewriteModule :: ModuleName -> Module HtmlType PrimT a -> (ModuleName, Module HtmlType PrimT a)
 rewriteModule mn (Module tys imports exprs) =
-  let exprs' = fmap (\(ModuleExpr ty e) -> ModuleExpr ty (rewriteExpr e)) exprs
+  let exprs' = fmap (\(ModuleExpr ty e) -> ModuleExpr ty (rewriteExpr (Just mn) e)) exprs
   in (mn, Module tys imports exprs')
 
-rewriteExpr :: Expr PrimT a -> Expr PrimT a
-rewriteExpr =
-  Core.rewriteFix rules . Core.rewriteFix Rewrite.globalRules
+rewriteExpr :: Maybe ModuleName -> Expr PrimT a -> Expr PrimT a
+rewriteExpr mn =
+  Core.rewriteFix (rules mn) . Core.rewriteFix Rewrite.globalRules
 
 -- * Drop all comments, they don't make sense in virtual-dom world
 -- * Replace constructors with DOMLike typeclass methods
-rules :: [RewriteRule PrimT a]
-rules =
+rules :: Maybe ModuleName -> [RewriteRule PrimT a]
+rules mmn =
   fmap Rewrite [
       -- Replace HTML model with DOMLike functions.
       -- These rules are important for correctness - won't work without these.
@@ -54,7 +56,7 @@ rules =
              _ ->
                empty)
 
-    -- FIXME this is a hack, probably need to filter out comments.
+    -- FIXME this is a bad bad hack, probably need to filter out comments.
     , (\case ECon a (Constructor "Comment") _ [str] ->
                pure (apply (textNode a) [str])
              _ ->
@@ -102,6 +104,14 @@ rules =
              _ ->
                empty)
 
+    -- Confusingly, for Purescript, we must de-qualify local definitions.
+    , (\case EVar a n -> do
+               mn <- mmn
+               nn <- disqualify mn n
+               pure (EVar a nn)
+             _ ->
+               empty)
+
     -- Mutate all the constructors in pattern matches.
     , (\case ECase a e ps ->
                let
@@ -145,6 +155,12 @@ qualifyConstructor c =
       pure $ Constructor "false"
     _ ->
       empty
+
+disqualify :: ModuleName -> Name -> Maybe Name
+disqualify (ModuleName mn) (Name n) = do
+  let (modl, varr) = T.breakOnEnd "." n
+  guard (modl == (mn <> "."))
+  pure (Name varr)
 
 -- build an application chain
 apply :: Expr PrimT a -> [Expr PrimT a] -> Expr PrimT a
