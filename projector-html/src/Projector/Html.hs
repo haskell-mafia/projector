@@ -35,6 +35,7 @@ module Projector.Html (
   , codeGenModule
   , validateModules
   , warnModules
+  , simplifyModules
   -- * Templates
   , Template
   , Range
@@ -68,6 +69,7 @@ import qualified Projector.Html.Data.Module as HB
 import           Projector.Html.Data.Position  (Range, renderRange)
 import           Projector.Html.Data.Prim
 import           Projector.Html.Data.Template  (Template)
+import qualified Projector.Html.Interpreter as HI
 import           Projector.Html.ModuleGraph
 import           Projector.Html.Syntax (SyntaxError (..), renderSyntaxError)
 import qualified Projector.Html.Syntax as Syntax
@@ -362,6 +364,18 @@ warnModules decls mods =
       shadowing = void (sequenceEither (fmap (first (fmap HtmlCoreWarning) . PC.warnShadowing binds) exprs))
       exhaustiv = void (sequenceEither (fmap (first (fmap HtmlCoreWarning) . PC.warnExhaustivity types) exprs))
   in shadowing *> exhaustiv
+
+-- | Simplify everything as far as we can. This involves:
+--
+-- * Beta/eta reducing all the things
+-- * Running all the global rewrite rules (these apply identities to shrink code)
+-- * Inlining some definitions
+simplifyModules :: HtmlDecls -> HtmlModules -> HtmlModules
+simplifyModules decls mods =
+  let subs = HC.constructorFunctionExprs (Library.types <> decls) in
+  with mods $ \(HB.Module ts imps exps) ->
+    HB.Module ts imps . with exps $ \(HB.ModuleExpr a expr) ->
+      HB.ModuleExpr a (HI.eval subs expr)
 
 userConstants :: UserConstants -> Map PC.Name (HtmlType, SrcAnnotation)
 userConstants (UserConstants ucons) =
