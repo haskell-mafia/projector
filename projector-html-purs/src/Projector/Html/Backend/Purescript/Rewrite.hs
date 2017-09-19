@@ -144,6 +144,24 @@ rules mmn =
              _ ->
                empty)
 
+      -- These rules are just optimisations.
+      -- fold of a singleton: id
+    , (\case EApp _ (EForeign _ (Name "Projector.Html.Runtime.Pux.fold") _) (EList _ [x]) ->
+               pure x
+             _ ->
+               empty)
+      -- concat of a singleton: id
+    , (\case EApp _ (EForeign _ (Name "Projector.Html.Runtime.concat") _) (EList _ [x]) ->
+               pure x
+             _ ->
+               empty)
+      -- adjacent raw plaintext nodes can be merged
+    , (\case EApp a fh@(EForeign _ (Name "Projector.Html.Runtime.Pux.fold") _) (EList b nodes) -> do
+               nodes' <- foldRaw nodes
+               pure (EApp a fh (EList b nodes'))
+             _ ->
+               empty)
+
     ]
 
 
@@ -206,3 +224,22 @@ attr a =
 foldHtml :: a -> Expr PrimT a
 foldHtml a =
   EForeign a (Name "Projector.Html.Runtime.Pux.fold") (TArrow (TList CL.tHtml) CL.tHtml)
+
+pattern RawTextNode a b c t =
+  EApp a
+    (EForeign b (Name "Projector.Html.Runtime.Pux.textUnescaped") (TArrow (TLit TString) (TVar (TypeName "Html"))))
+    (ELit c (VString t))
+
+-- Combine adjacent raw text nodes.
+foldRaw :: [HtmlExpr a] -> Maybe [HtmlExpr a]
+foldRaw exprs =
+  if length (go exprs) == length exprs then empty else pure (go exprs)
+  where
+    go es =
+      case es of
+        [] ->
+          []
+        (RawTextNode a b c t1 : RawTextNode _ _ _ t2 : xs) ->
+          go (RawTextNode a b c (t1 <> t2) : xs)
+        (x:xs) ->
+          x : go xs

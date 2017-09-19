@@ -189,6 +189,7 @@ pattern RawTextNode a b c t =
     (EForeign b (Name "Projector.Html.Runtime.textNodeUnescaped") (TArrow (TLit TString) (TVar (TypeName "Html"))))
     (ELit c (VString t))
 
+-- Combine adjacent raw text nodes.
 foldRaw :: [HtmlExpr a] -> Maybe [HtmlExpr a]
 foldRaw exprs =
   if length (go exprs) == length exprs then empty else pure (go exprs)
