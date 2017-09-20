@@ -1,5 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 module Projector.Html.Backend.Purescript (
     purescriptBackend
   ---
@@ -13,7 +14,10 @@ module Projector.Html.Backend.Purescript (
 
 import           Data.Functor.Identity  (Identity, runIdentity)
 import qualified Data.List as L
+import           Data.Map.Strict (Map)
 import qualified Data.Map.Strict as M
+import           Data.Set (Set)
+import qualified Data.Set as S
 import qualified Data.Text as T
 
 import           P
@@ -111,8 +115,47 @@ htmlRuntime =
 -- -----------------------------------------------------------------------------
 
 genTypeDecs :: HtmlDecls -> [Doc a]
-genTypeDecs =
-  fmap (uncurry genTypeDec) . M.toList . unTypeDecls
+genTypeDecs decls =
+  fmap (uncurry genTypeDec) . M.toList $ unTypeDecls decls
+
+-- | Figure out which declarations should have type parameters.
+--
+-- This is extremely naive and relies on the fact that we usually only
+-- have a single type parameter, 'ev'. No freshening of type variables.
+gatherTypeParams :: HtmlDecls -> Map TypeName (Set TypeName, HtmlDecl)
+gatherTypeParams (TypeDecls dmap) =
+  fix $ \result ->
+    flip M.mapWithKey dmap $ \tn td ->
+      go tn td result
+  where
+    go :: TypeName -> HtmlDecl -> Map TypeName (Set TypeName, HtmlDecl) -> (Set TypeName, HtmlDecl)
+    go tn td result =
+      case td of
+        DVariant cts ->
+          (,td) (foldMap (foldMap (flip (gather tn) result) . snd) cts)
+        DRecord fts ->
+          (,td) (foldMap (flip (gather tn) result . snd) fts)
+    gather :: TypeName -> HtmlType -> Map TypeName (Set TypeName, HtmlDecl) -> Set TypeName
+    gather self ty result =
+      case ty of
+        Type (TLitF _) ->
+          S.empty
+        Type (TVarF (TypeName "Html")) ->
+          S.singleton (TypeName "ev")
+        Type (TVarF tn) ->
+          if self == tn
+            then S.empty
+            else case M.lookup tn result of
+                   Just (ps, _d) ->
+                     ps
+                   Nothing ->
+                     S.empty
+        Type (TArrowF a b) ->
+          gather self a result <> gather self b result
+        Type (TListF a) ->
+          gather self a result
+        Type (TForallF ps b) ->
+          S.fromList ps <> gather self b result
 
 genTypeDec :: TypeName -> HtmlDecl -> Doc a
 genTypeDec (TypeName n) ty =
