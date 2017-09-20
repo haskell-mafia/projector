@@ -239,22 +239,20 @@ codeGenRename (TemplateNameMap nmap) cgn (HB.Module ts is es) =
   in HB.Module ts is . with (M.mapKeys renameDef es) $ \(HB.ModuleExpr a x) ->
        HB.ModuleExpr a (PC.mapFree renameVal x)
 
--- FIXME should be UserDataTypes or something
 codeGenDataTypes ::
      HB.Backend a e
   -> HtmlDecls
   -> [(FilePath, Map PC.TypeName HtmlDecl)]
   -> ModuleNamer
-  -> Either [e] [(FilePath, Text)]
+  -> HtmlModules
 codeGenDataTypes b allDecls udts mnr =
   let allModules :: Map HB.ModuleName HB.Imports
       allModules = M.fromList (fmap ((,HB.OpenImport) . pathToModuleName mnr) (fmap fst udts))
-  in sequenceEither . with udts $ \(fn, typs) ->
+  in M.fromList . with udts $ \(fn, typs) ->
     let mn = pathToModuleName mnr fn
         decls = PC.TypeDecls typs :: HtmlDecls
         imports = M.delete mn allModules
-    in first pure . codeGenModule b allDecls mn $ HB.Module decls imports mempty
-
+    in (mn, HB.Module decls imports mempty)
 
 substPlatformConstants ::
      PlatformConstants
