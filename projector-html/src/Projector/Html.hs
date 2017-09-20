@@ -33,7 +33,6 @@ module Projector.Html (
   , checkModules
   , codeGen
   , codeGenModule
-  , codeGenDataTypes
   , validateModules
   , warnModules
   -- * Templates
@@ -239,21 +238,6 @@ codeGenRename (TemplateNameMap nmap) cgn (HB.Module ts is es) =
   in HB.Module ts is . with (M.mapKeys renameDef es) $ \(HB.ModuleExpr a x) ->
        HB.ModuleExpr a (PC.mapFree renameVal x)
 
-codeGenDataTypes ::
-     HB.Backend a e
-  -> HtmlDecls
-  -> [(FilePath, Map PC.TypeName HtmlDecl)]
-  -> ModuleNamer
-  -> HtmlModules
-codeGenDataTypes b allDecls udts mnr =
-  let allModules :: Map HB.ModuleName HB.Imports
-      allModules = M.fromList (fmap ((,HB.OpenImport) . pathToModuleName mnr) (fmap fst udts))
-  in M.fromList . with udts $ \(fn, typs) ->
-    let mn = pathToModuleName mnr fn
-        decls = PC.TypeDecls typs :: HtmlDecls
-        imports = M.delete mn allModules
-    in (mn, HB.Module decls imports mempty)
-
 substPlatformConstants ::
      PlatformConstants
   -> HB.Module b PrimT (HtmlType, SrcAnnotation)
@@ -271,6 +255,7 @@ platformConstants (PlatformConstants pcons) =
 
 data Build = Build {
     buildModuleNamer :: ModuleNamer -- ^ A customisable way to name modules
+    -- FIXME datamodules shouldn't be there anymore
   , buildDataModules :: [DataModuleName] -- ^ The modules containing user datatypes.
   }
 
@@ -297,7 +282,7 @@ newtype DataModuleName = DataModuleName {
   } deriving (Eq, Ord, Show)
 
 newtype UserDataTypes = UserDataTypes {
-    unUserDataTypes :: HtmlDecls
+    unUserDataTypes :: [(FilePath, Map PC.TypeName HtmlDecl)]
   } deriving (Eq, Ord, Show, Monoid)
 
 data ModuleNamer = ModuleNamer {
@@ -347,15 +332,31 @@ runBuildIncremental ::
   -> HtmlModules
   -> RawTemplates
   -> Either [HtmlError] BuildArtefacts
-runBuildIncremental (Build mnr mdm) (UserDataTypes decls) ucons hms rts = do
+runBuildIncremental (Build mnr mdm) u@(UserDataTypes udts) ucons hms rts = do
   -- Build the module map
   (mg, nmap, mmap) <- smush mdm mnr hms rts
   -- Check it for import cycles
   (_ :: ()) <- first (pure . HtmlModuleGraphError) (detectCycles mg)
   let known = HB.extractModuleBindings hms <> userConstants ucons
+      decls = PC.TypeDecls $ foldMap snd udts
+      datas = buildDataTypes mnr u
   -- Check all modules (this could be a lazy stream)
   -- TODO the Map forces all of this at once, remove
-  BuildArtefacts decls nmap <$> first pure (checkModules decls known mmap)
+  terms <- first pure (checkModules decls known mmap)
+  pure $ BuildArtefacts decls nmap (terms <> datas)
+
+buildDataTypes ::
+     ModuleNamer
+  -> UserDataTypes
+  -> HtmlModules
+buildDataTypes mnr (UserDataTypes udts) =
+  let allModules :: Map HB.ModuleName HB.Imports
+      allModules = M.fromList (fmap ((,HB.OpenImport) . pathToModuleName mnr) (fmap fst udts))
+  in M.fromList . with udts $ \(fn, typs) ->
+    let mn = pathToModuleName mnr fn
+        decls = PC.TypeDecls typs :: HtmlDecls
+        imports = M.delete mn allModules
+    in (mn, HB.Module decls imports mempty)
 
 -- TODO hmm is this a compilation detail we should hide in HC?
 libraryExprs :: Map PC.Name (HtmlType, SrcAnnotation)
