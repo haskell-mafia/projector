@@ -332,14 +332,16 @@ runBuildIncremental ::
   -> HtmlModules
   -> RawTemplates
   -> Either [HtmlError] BuildArtefacts
-runBuildIncremental (Build mnr mdm) u@(UserDataTypes udts) ucons hms rts = do
+runBuildIncremental (Build mnr umdm) u@(UserDataTypes udts) ucons hms rts = do
+  -- Build modules out of the user datatypes
+  let datas = buildDataTypes mnr u
+      mdm = umdm <> (fmap DataModuleName (M.keys datas))
   -- Build the module map
   (mg, nmap, mmap) <- smush mdm mnr hms rts
   -- Check it for import cycles
   (_ :: ()) <- first (pure . HtmlModuleGraphError) (detectCycles mg)
   let known = HB.extractModuleBindings hms <> userConstants ucons
       decls = PC.TypeDecls $ foldMap snd udts
-      datas = buildDataTypes mnr u
   -- Check all modules (this could be a lazy stream)
   -- TODO the Map forces all of this at once, remove
   terms <- first pure (checkModules decls known mmap)
