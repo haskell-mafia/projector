@@ -287,6 +287,7 @@ newtype UserDataTypes = UserDataTypes {
 
 data ModuleNamer = ModuleNamer {
     pathToModuleName :: FilePath -> HB.ModuleName
+  , pathToDataModuleName :: FilePath -> HB.ModuleName
   , filePathToExprName  :: FilePath -> PC.Name
   }
 
@@ -353,9 +354,9 @@ buildDataTypes ::
   -> HtmlModules
 buildDataTypes mnr (UserDataTypes udts) =
   let allModules :: Map HB.ModuleName HB.Imports
-      allModules = M.fromList (fmap ((,HB.OpenImport) . pathToModuleName mnr) (fmap fst udts))
+      allModules = M.fromList (fmap ((,HB.OpenImport) . pathToDataModuleName mnr) (fmap fst udts))
   in M.fromList . with udts $ \(fn, typs) ->
-    let mn = pathToModuleName mnr fn
+    let mn = pathToDataModuleName mnr fn
         decls = PC.TypeDecls typs :: HtmlDecls
         imports = M.delete mn allModules
     in (mn, HB.Module decls imports mempty)
@@ -427,7 +428,10 @@ smush mdm mnr hms (RawTemplates templates) = do
 -- | Provide a default naming scheme for modules and function names
 moduleNamerSimple :: Maybe HB.ModuleName -> ModuleNamer
 moduleNamerSimple prefix =
-  ModuleNamer (filePathToModuleNameSimple prefix) filePathToExprNameSimple
+  ModuleNamer
+    (filePathToModuleNameSimple prefix)
+    ((`HB.moduleNameAppend` (HB.ModuleName "Data")) . filePathToModuleNameSimple prefix)
+    filePathToExprNameSimple
 
 -- | Derive a module name from the relative 'FilePath'.
 --
