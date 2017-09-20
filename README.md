@@ -1,75 +1,138 @@
 # Projector
 
-This repository contains a few interrelated projects.
+Projector is a typed, total templating language that produces
+well-formed HTML.
 
-## projector-core
+Concretely, this means:
 
-projector-core is an implementation of a typed lambda calculus. It is
-based on the total fragment of the Damas-Hindley-Milner calculus, with
-the following features:
+- Users define data types in a Haskell-like syntax and pass them to Projector
+- Users write their markup in a HTML-like syntax, augmented with an
+  expression language
+- That surface syntax desugars into a typed lambda calculus, which is
+  type checked according to Damas-Milner
+- The datatypes and typechecked terms are simplified
+- A collection of platform-specific backends transform the simplified
+  terms into (somewhat) idiomatic native code.
 
-- Lambda abstraction, application
-- Damas-Milner polymorphism (TODO)
-- A configurable set of ground/primitive types
-- Variants (sum types)
-- Records (product types)
-- Damas-Milner type inference
-  - The record system is quite simplistic. Records require some
-    hinting!
-- Termination checker (TODO)
+There are a few perks to this approach:
 
-The `projector-core` package includes the syntax and type definitions,
-the type checker, a simplifier (normaliser), and Jack generators for
-well-typed and ill-typed terms.
+- Templates have to make some semblance of sense
+- Variables must be defined and well-typed
+- Your frontend views can be seamlessly shared between client and
+  server, even if you're using a complicated vdom-based library
+- Templates are pure functions that cannot throw errors at runtime
+- Infinite loops while rendering are unlikely (disclaimer: this is syntactic)
+- Templates can be normalised and simplified at compile time, reducing
+  code size and providing runtime optimisation opportunities
+- Static analysis of the constructed markup becomes possible
+- Very few dependencies are needed at runtime
 
-## projector-html
+There are a few things that have not been fleshed out, though
+they are fairly straightforward:
 
-projector-html is a typed templating language that produces
-well-formed HTML, featuring:
+- There's no event system right now, though it's coming!
+- User data types must be very simple (no polymorphism)
+- Type errors are sometimes inscrutable (though usually pretty good)
 
-- A surface syntax that desugars into typed projector-core for
-  checking and simplification
-- A collection of platform-specific backends, which transform the
-  simplified projector-core terms into (somewhat) idiomatic native
-  code
+There are also a few downsides to this approach that are worth your
+consideration:
 
-The objective here is to provide as much actionable feedback as
-possible to the frontend developer mechanically, while removing a few
-classes of error from production. This eases code review and reduces
-deployment risk. If we can produce reusable and efficient code in the
-process, that is nice too.
+- You're locked into our wacky Haskell-esque syntax (it's serviceable,
+  but could use a bit of design iteration)
+- Every template requires a type signature (just one, at the top -
+  everything else is inferred)
+- The interactive stateful component of your application is beyond
+  Projector's remit, and is best pursued in your preferred Javascript
+  ecosystem.  Consider Projector a language to define views.  It could
+  be used with frameworks like React, Redux, Elm, or Pux, but it does
+  not replace them.
+- The generated code can be a little large, though there's a lot of
+  low-hanging fruit to improve this.
+    - Currently we rely on beta/eta reduction and a collection of
+      rewrite rules to simplify terms. More rules will make a big
+      difference.
+	- Currently we generate native terms on each platform for each
+      template, and have them actually call one another. This
+      minimises the recompilation burden during interactive
+      development. We'd get smaller, simpler code by instead providing
+      entry points, then inlining all the function calls, then
+      simplifying.
 
-Specifically, the following should no longer be possible:
-- Runtime rendering errors
-  - Unbound variables will throw type errors
-  - Nonsensical expressions will throw type errors
-- Infinite loops while rendering
+Projector achieves its goals via a series of well-known implementation
+techniques from the field of programming languages. No single element
+of Projector is novel.
 
-A well-formed template, when rendered, should be a finite
-(terminating) projection from the platform's version of the data to
-the target platform's notion of HTML.
+## Syntax
 
-Backends for `projector-html` aim to provide reusable code in the
-target language, such that we can at any point just check in the
-generated code and walk away from this tool entirely. For example, a
-backend targeting `Hydrant` would render each template accepting a
-`Foo` as `Foo -> Html`.
 
-### projector-html-runtime-hs
+## Data Types
 
-This is a Haskell Hydrant runtime for `projector-html`.
+- Ground / primitives
+- Variants
+- Records
 
-This runtime is largely responsible for reexporting the right set of
-primitive types, and Hydrant. If the runtime is doing serious
-rendering work, the backend is not finished.
+## Backends
 
-### projector-html-runtime-purs
+At present there are only two backends:
 
-This is a Purescript Pux runtime for `projector-html`.
+- Haskell Hydrant
+- Purescript Pux 6
 
-This runtime is largely responsible for reexporting the right set of
-primitive types, and Pux. If the runtime is doing serious rendering
-work, the backend is not finished.
+Similar platforms like Elm, React, virtual-dom, blaze or lucid would
+be pretty easy to support, building off the existing backends. C or
+Rust would be a moderate amount of quite interesting work.
+
+## Totality (or lack thereof)
+
+Contrary to the project description, Projector has no totality
+checker, and the underlying calculus does admit divergent terms!
+
+However, both syntactic restrictions and practical considerations
+mandate that all templates be total. These were quite effective for
+the prototype, so nobody bothered to run the last mile and implement a
+checker / refine the underlying calculus. It would still be a good
+exercise to do so!
+
+In particular, the following features provide a little bit of
+assurance that your frontend is total:
+- If a template diverges, the simplifier will also diverge, breaking
+  the build
+- There are no let bindings, so it's hard (impossible?) to diverge
+  inside a single file
+- The call graph must form a DAG, so it's hard to diverge by
+  accidentally-cyclic definitions
+- Data types cannot contain Projector functions
+
+However, there is at least one way to create a divergent template. For
+now, just try not to hold it wrong.
+
+
+## Interactive development
+
+
+
+## Build Process
+
+Here we outline the build process from strings to code, plus starting
+points if you want to hack on Projector:
+
+- Parse datatypes and templates from files/strings
+    - `Projector.Html.Syntax` et al, `Projector.Html.Core.Machinator`
+- Desugar templates into lambda terms
+    - `Projector.Html.Core.Elaborator`
+- Typecheck lambda terms
+    - Type checker lives in `Projector.Core.Check`, built-in types
+      live in `Projector.Html.Core.*`
+- Simplify lambda terms (beta, eta, type-preserving rewrites)
+    - `Projector.Core.Eval`, `Projector.Core.Rewrite`,
+      `Projector.Html.Interpreter`, global rewrite rules live in
+      `Projector.Html.Backend.Rewrite`
+- Apply a user-supplied naming scheme
+    - `ModuleNamer` in `Projector.Html`
+- Group terms and types into modules according to a user-supplied heuristic
+    - `ModuleNamer` in `Projector.Html`
+- Apply backend-specific rewrite rules (non-type-preserving)
+- Generate backend code, usually via recursive descent
 
 ## Conceptual reviewers
 
