@@ -90,7 +90,7 @@ genModule decls (Module ts _ es) = do
   let tdecs = genTypeDecs ts
   decs <- for (M.toList es) $ \(n, ModuleExpr ty e) -> do
     d <- genExpDec decls n e
-    pure [genTypeSig n ty, d]
+    pure [genTypeSig n ty _, d]
   pure (tdecs <> fold decs)
 
 genImport :: ModuleName -> Imports -> Text
@@ -116,13 +116,16 @@ htmlRuntime =
 
 genTypeDecs :: HtmlDecls -> [Doc a]
 genTypeDecs decls =
-  fmap (uncurry genTypeDec) . M.toList $ unTypeDecls decls
+  let kps = gatherTypeParams decls
+  in fmap (\(tn, (sn, td)) -> genTypeDec tn sn td kps) (M.toList kps)
+
+type KnownParams = Map TypeName (Set TypeName, HtmlDecl)
 
 -- | Figure out which declarations should have type parameters.
 --
 -- This is extremely naive and relies on the fact that we usually only
 -- have a single type parameter, 'ev'. No freshening of type variables.
-gatherTypeParams :: HtmlDecls -> Map TypeName (Set TypeName, HtmlDecl)
+gatherTypeParams :: HtmlDecls -> KnownParams
 gatherTypeParams (TypeDecls dmap) =
   fix $ \result ->
     flip M.mapWithKey dmap $ \tn td ->
@@ -157,31 +160,35 @@ gatherTypeParams (TypeDecls dmap) =
         Type (TForallF ps b) ->
           S.fromList ps <> gather self b result
 
-genTypeDec :: TypeName -> HtmlDecl -> Doc a
-genTypeDec (TypeName n) ty =
+genTypeDec :: TypeName -> Set TypeName -> HtmlDecl -> KnownParams -> Doc a
+genTypeDec (TypeName n) ps ty kps =
   case ty of
     DVariant cts ->
       WL.hang 2
-        (text "data" <+> text n WL.<$$> text "="
+        (text "data" <+> text n <+> typeParams ps WL.<$$> text "="
           WL.<> (foldl'
                   (<+>)
                   WL.empty
-                  (WL.punctuate (WL.linebreak WL.<> text "|") (fmap (uncurry genCon) cts))))
+                  (WL.punctuate (WL.linebreak WL.<> text "|") (fmap (\(c, ts) -> genCon c ts kps) cts))))
     DRecord fts ->
       WL.vcat [
         -- newtype
           WL.hang 2
-            (text "newtype" <+> text n <+> text "=" <+> text n <+> WL.lbrace
-              WL.<$$> WL.vcat (WL.punctuate WL.comma (with fts $ \(FieldName fn, ft) -> text fn <+> text "::" <+> genType ft))
+            (text "newtype" <+> text n <+> typeParams ps <+> text "=" <+> text n <+> WL.lbrace
+              WL.<$$> WL.vcat (WL.punctuate WL.comma (with fts $ \(FieldName fn, ft) -> text fn <+> text "::" <+> genType ft kps))
               WL.<$$> WL.rbrace)
         ]
 
-genCon :: Constructor -> [HtmlType] -> Doc a
-genCon (Constructor c) ts =
-  WL.hang 2 (text c WL.<> foldl' (<+>) WL.empty (fmap genType ts))
+typeParams :: Set TypeName -> Doc a
+typeParams ps =
+  WL.hsep (fmap (text . unTypeName) (S.toList ps))
 
-genType :: HtmlType -> Doc a
-genType ty =
+genCon :: Constructor -> [HtmlType] -> KnownParams -> Doc a
+genCon (Constructor c) ts kps =
+  WL.hang 2 (text c WL.<> foldl' (<+>) WL.empty (fmap (flip genType kps) ts))
+
+genType :: HtmlType -> KnownParams -> Doc a
+genType ty kps =
   case ty of
     Type (TLitF l) ->
       text (ppGroundType l)
@@ -190,17 +197,17 @@ genType ty =
       text n
 
     Type (TArrowF t1 t2) ->
-      WL.parens (genType t1 <+> text "->" <+> genType t2)
+      WL.parens (genType t1 kps <+> text "->" <+> genType t2 kps)
 
     Type (TListF t)->
-      WL.parens (text "Array" <+> genType t)
+      WL.parens (text "Array" <+> genType t kps)
 
     Type (TForallF ts t1) ->
-      WL.parens (text "forall" <+> text (T.unwords $ fmap unTypeName ts) WL.<> text "." <+> genType t1)
+      WL.parens (text "forall" <+> text (T.unwords $ fmap unTypeName ts) WL.<> text "." <+> genType t1 kps)
 
-genTypeSig :: Name -> HtmlType -> Doc a
-genTypeSig (Name n) ty =
-  WL.hang 2 (text n <+> "::" <+> genType ty)
+genTypeSig :: Name -> HtmlType -> KnownParams -> Doc a
+genTypeSig (Name n) ty kps =
+  WL.hang 2 (text n <+> "::" <+> genType ty kps)
 
 genExpDec :: HtmlDecls -> Name -> HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
 genExpDec decls (Name n) expr = do
