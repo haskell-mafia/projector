@@ -253,6 +253,7 @@ platformConstants (PlatformConstants pcons) =
 -- -----------------------------------------------------------------------------
 -- Build interface, i.e. things an end user should use
 
+-- FIXME just remove this type
 data Build = Build {
     buildModuleNamer :: ModuleNamer -- ^ A customisable way to name modules
     -- FIXME datamodules shouldn't be there anymore
@@ -336,7 +337,7 @@ runBuildIncremental ::
   -> Either [HtmlError] BuildArtefacts
 runBuildIncremental (Build mnr umdm) u@(UserDataTypes udts) ucons types hms rts = do
   -- Build modules out of the user datatypes
-  let datas = buildDataTypes mnr u
+  let datas = buildDataTypes mnr umdm u
       mdm = umdm <> (fmap DataModuleName (M.keys datas))
   -- Build the module map
   (mg, nmap, mmap) <- smush mdm mnr hms rts
@@ -351,11 +352,14 @@ runBuildIncremental (Build mnr umdm) u@(UserDataTypes udts) ucons types hms rts 
 
 buildDataTypes ::
      ModuleNamer
+  -> [DataModuleName]
   -> UserDataTypes
   -> HtmlModules
-buildDataTypes mnr (UserDataTypes udts) =
-  let allModules :: Map HB.ModuleName HB.Imports
-      allModules = M.fromList (fmap ((,HB.OpenImport) . pathToDataModuleName mnr) (fmap fst udts))
+buildDataTypes mnr dmns (UserDataTypes udts) =
+  let someModules :: Map HB.ModuleName HB.Imports
+      someModules = M.fromList (fmap ((,HB.OpenImport) . unDataModuleName) dmns)
+      allModules :: Map HB.ModuleName HB.Imports
+      allModules = someModules <> M.fromList (fmap ((,HB.OpenImport) . pathToDataModuleName mnr) (fmap fst udts))
   in M.fromList . with udts $ \(fn, typs) ->
     let mn = pathToDataModuleName mnr fn
         decls = PC.TypeDecls typs :: HtmlDecls
