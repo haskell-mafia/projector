@@ -112,6 +112,8 @@ moduleBoundCons (Module types _imports _exprs) =
   S.fromList . join . with (M.toList (unTypeDecls types)) $ \(TypeName tn, decl) ->
     case decl of
       DVariant cts ->
+        -- NOPE none of this will work because of record fields
+        --      better off just porting the simple graph code from Machinator
         -- HACKS: better not reuse this typename as a constructor elsewhere
         (Constructor tn) : fmap fst cts
       DRecord _fts ->
