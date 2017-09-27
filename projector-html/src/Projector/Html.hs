@@ -363,7 +363,7 @@ buildDataTypes mnr dmns (UserDataTypes udts) =
   in M.fromList . with udts $ \(fn, typs) ->
     let mn = pathToDataModuleName mnr fn
         decls = PC.TypeDecls typs :: HtmlDecls
-        imports = M.delete mn allModules
+        imports = M.delete mn allModules -- FIXME cycles, ugh
     in (mn, HB.Module decls imports mempty)
 
 -- TODO hmm is this a compilation detail we should hide in HC?
