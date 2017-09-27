@@ -55,11 +55,14 @@ deriveImports =
 
 deriveImportsIncremental :: Map ModuleName (Set Name) -> Map ModuleName (Module b l a) -> Map ModuleName (Module b l a)
 deriveImportsIncremental known mods =
-  let modfrees :: Map ModuleName (Set Name)
-      modfrees = fmap moduleFree mods
+  let fudgeCons :: Map ModuleName (Set Constructor) -> Map ModuleName (Set Name)
+      fudgeCons = fmap (S.map (Name . unConstructor))
+
+      modfrees :: Map ModuleName (Set Name)
+      modfrees = fmap moduleFree mods <> fudgeCons (fmap moduleFreeCons mods)
 
       modbinds :: Map ModuleName (Set Name)
-      modbinds = known <> fmap moduleBound mods
+      modbinds = known <> fmap moduleBound mods <> fudgeCons (fmap moduleBoundCons mods)
 
       inverted :: Map Name ModuleName
       inverted = M.foldMapWithKey (\k vs -> foldl' (\acc v -> M.insert v k acc) mempty vs) modbinds

@@ -340,7 +340,7 @@ runBuildIncremental (Build mnr umdm) u@(UserDataTypes udts) ucons types hms rts 
   let datas = buildDataTypes mnr umdm u
       mdm = umdm <> (fmap DataModuleName (M.keys datas))
   -- Build the module map
-  (mg, nmap, mmap) <- smush mdm mnr hms rts
+  (mg, nmap, mmap) <- smush mdm mnr (datas <> hms) rts
   -- Check it for import cycles
   (_ :: ()) <- first (pure . HtmlModuleGraphError) (detectCycles mg)
   let known = HB.extractModuleBindings hms <> userConstants ucons
@@ -356,14 +356,10 @@ buildDataTypes ::
   -> UserDataTypes
   -> HtmlModules
 buildDataTypes mnr dmns (UserDataTypes udts) =
-  let someModules :: Map HB.ModuleName HB.Imports
-      someModules = M.fromList (fmap ((,HB.OpenImport) . unDataModuleName) dmns)
-      allModules :: Map HB.ModuleName HB.Imports
-      allModules = someModules <> M.fromList (fmap ((,HB.OpenImport) . pathToDataModuleName mnr) (fmap fst udts))
-  in M.fromList . with udts $ \(fn, typs) ->
+  deriveImports . M.fromList . with udts $ \(fn, typs) ->
     let mn = pathToDataModuleName mnr fn
         decls = PC.TypeDecls typs :: HtmlDecls
-        imports = M.delete mn allModules -- FIXME cycles, ugh
+        imports = M.fromList (fmap ((,HB.OpenImport) . unDataModuleName) dmns)
     in (mn, HB.Module decls imports mempty)
 
 -- TODO hmm is this a compilation detail we should hide in HC?
@@ -399,7 +395,6 @@ userConstants (UserConstants ucons) =
 -- * we do one template per module right now
 -- * the expression names are derived from the filepath
 -- * the module name is also derived from the filepath
--- * we currently expect all user datatypes to be exported from a single module
 smush ::
      [DataModuleName]
   -> ModuleNamer
