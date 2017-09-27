@@ -9,7 +9,9 @@ module Projector.Html.Data.Module (
   , Module (..)
   , ModuleExpr (..)
   , moduleFree
+  , moduleFreeCons
   , moduleBound
+  , moduleBoundCons
   , extractModuleBindings
   , extractModuleExprs
   , Imports (..)
@@ -60,6 +62,41 @@ data ModuleExpr b l a = ModuleExpr {
 moduleFree :: Module b l a -> Set Name
 moduleFree (Module _types _imports exprs) =
   foldl' (flip S.delete) (foldMap (gatherFree . meExpr) exprs) (M.keys exprs)
+
+-- | The names of all the constructors referenced in this module.
+moduleFreeCons :: Module b l a -> Set Constructor
+moduleFreeCons modl@(Module _types _imports exprs) =
+  foldl' (flip S.delete) (foldMap (gatherCons . meExpr) exprs) (moduleBoundCons modl)
+
+-- | Gather all the constructors used in a term.
+gatherCons :: Expr l a -> Set Constructor
+gatherCons =
+  foldlExpr
+    (\s expr ->
+       case expr of
+         ECon _ c _ _ ->
+           S.insert c s
+         ERec _ (TypeName tn) _ ->
+           S.insert (Constructor tn) s
+         _ ->
+           s)
+    (\s pat ->
+       case pat of
+         PCon _ c _ ->
+           S.insert c s
+         _ ->
+           s)
+    S.empty
+
+-- | The names of all the constructors defined in this module.
+moduleBoundCons :: Module b l a -> Set Constructor
+moduleBoundCons (Module types _imports _exprs) =
+  S.fromList . join . with (M.toList (unTypeDecls types)) $ \(TypeName tn, decl) ->
+    case decl of
+      DVariant cts ->
+        fmap fst cts
+      DRecord _fts ->
+        [Constructor tn]
 
 -- | The names of all variables bound/exported in this module.
 moduleBound :: Module b l a -> Set Name
