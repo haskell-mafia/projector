@@ -65,8 +65,26 @@ moduleFree (Module _types _imports exprs) =
 
 -- | The names of all the constructors referenced in this module.
 moduleFreeCons :: Module b l a -> Set Constructor
-moduleFreeCons modl@(Module _types _imports exprs) =
-  foldl' (flip S.delete) (foldMap (gatherCons . meExpr) exprs) (moduleBoundCons modl)
+moduleFreeCons modl@(Module types _imports exprs) =
+  foldl' (flip S.delete) (foldMap (gatherCons . meExpr) exprs <> declFree types) (moduleBoundCons modl)
+
+declFree :: TypeDecls l -> Set Constructor
+declFree types =
+  S.fromList . join . with (M.toList (unTypeDecls types)) $ \(TypeName _tn, decl) ->
+    case decl of
+      DVariant cts ->
+        foldMap (join . fmap unty . snd) cts
+      DRecord fts ->
+        foldMap (unty . snd) fts
+  where
+    -- Awful hacks upon hacks
+    unty :: Type l -> [Constructor]
+    unty ty =
+      case ty of
+        TVar (TypeName tn) ->
+          [Constructor tn]
+        _ ->
+          []
 
 -- | Gather all the constructors used in a term.
 gatherCons :: Expr l a -> Set Constructor
@@ -94,7 +112,8 @@ moduleBoundCons (Module types _imports _exprs) =
   S.fromList . join . with (M.toList (unTypeDecls types)) $ \(TypeName tn, decl) ->
     case decl of
       DVariant cts ->
-        fmap fst cts
+        -- HACKS: better not reuse this typename as a constructor elsewhere
+        (Constructor tn) : fmap fst cts
       DRecord _fts ->
         [Constructor tn]
 

@@ -56,7 +56,7 @@ deriveImports =
 deriveImportsIncremental :: Map ModuleName (Set Name) -> Map ModuleName (Module b l a) -> Map ModuleName (Module b l a)
 deriveImportsIncremental known mods =
   let fudgeCons :: Map ModuleName (Set Constructor) -> Map ModuleName (Set Name)
-      fudgeCons = fmap (S.map (Name . unConstructor))
+      fudgeCons = fmap (S.map (Name . unConstructor)) . \a -> trace (show a) a
 
       modfrees :: Map ModuleName (Set Name)
       modfrees = fmap moduleFree mods <> fudgeCons (fmap moduleFreeCons mods)
