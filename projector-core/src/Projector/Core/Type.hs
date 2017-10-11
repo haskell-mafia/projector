@@ -83,10 +83,10 @@ mapGroundType tmap (Type ty) =
       TForallF as (mapGroundType tmap bs)
 
 -- | Declared types.
-data Decl l
-  = DVariant [(Constructor, [Type l])]
-  | DRecord [(FieldName, Type l)]
-  deriving (Eq, Ord, Show)
+data Decl l a
+  = DVariant [(Constructor, [Type l])] a
+  | DRecord [(FieldName, Type l)] a
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 -- | The class of user-supplied primitive types.
 class (Eq l, Ord l, Show l, Eq (Value l), Ord (Value l), Show (Value l)) => Ground l where
@@ -108,32 +108,32 @@ newtype FieldName = FieldName { unFieldName :: Text }
   deriving (Eq, Ord, Show)
 
 -- | Type contexts.
-newtype TypeDecls l = TypeDecls { unTypeDecls :: Map TypeName (Decl l) }
-  deriving (Eq, Ord, Show)
+newtype TypeDecls l a = TypeDecls { unTypeDecls :: Map TypeName (Decl l a) }
+  deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-instance Ord l => Monoid (TypeDecls l) where
+instance Ord l => Monoid (TypeDecls l a) where
   mempty = TypeDecls mempty
   mappend x = TypeDecls . (mappend `on` unTypeDecls) x
 
-declareType :: Ground l => TypeName -> Decl l -> TypeDecls l -> TypeDecls l
+declareType :: Ground l => TypeName -> Decl l a -> TypeDecls l a -> TypeDecls l a
 declareType n t =
   TypeDecls . M.insert n t . unTypeDecls
 
-lookupType :: Ground l => TypeName -> TypeDecls l -> Maybe (Decl l)
+lookupType :: Ground l => TypeName -> TypeDecls l a -> Maybe (Decl l a)
 lookupType n =
   M.lookup n . unTypeDecls
 
-subtractTypes :: Ground l => TypeDecls l -> TypeDecls l -> TypeDecls l
+subtractTypes :: Ground l => TypeDecls l a -> TypeDecls l a -> TypeDecls l a
 subtractTypes (TypeDecls m) (TypeDecls n) =
   TypeDecls (M.difference m n)
 
 -- FIX this really sucks, maintain the map in Decls if need be
-lookupConstructor :: Ground l => Constructor -> TypeDecls l -> Maybe (TypeName, [Type l])
+lookupConstructor :: Ground l => Constructor -> TypeDecls l a -> Maybe (TypeName, [Type l])
 lookupConstructor con (TypeDecls m) =
   M.lookup con . M.fromList . mconcat . with (M.toList m) $ \(tn, dec) ->
     case dec of
-      DVariant cts ->
+      DVariant cts _a ->
         with cts $ \(c, ts) ->
           (c, (tn, ts))
-      DRecord fts ->
+      DRecord fts _a ->
         [(Constructor (unTypeName tn), (tn, fmap snd fts))]

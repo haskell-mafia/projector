@@ -81,14 +81,14 @@ buildCaseInex n =
           , (if n == 0 then var_ "x" else buildCaseInex (m - 1)))
         ]
 
-tcasey :: Decl TestLitT
+tcasey :: Decl TestLitT ()
 tcasey =
   DVariant [
       (Constructor "Casey", [TLit TBool])
     , (Constructor "Foo", [TVar (TypeName "Casey")])
-    ]
+    ] ()
 
-caseyCtx :: TypeDecls TestLitT
+caseyCtx :: TypeDecls TestLitT ()
 caseyCtx =
   declareType (TypeName "Casey") tcasey mempty
 

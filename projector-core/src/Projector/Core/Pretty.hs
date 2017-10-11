@@ -50,7 +50,7 @@ ppTypeError' err =
         WL.empty WL.<$$> text ("Not in scope: '" <> n <> "'")
     BadConstructorName (Constructor c) (TypeName tn) d a ->
       case d of
-        DVariant cts ->
+        DVariant cts _a ->
           WL.annotate a $
           text
             (mconcat
@@ -61,7 +61,7 @@ ppTypeError' err =
                , ". Perhaps you meant one of:"
                , T.intercalate ", " (fmap (unConstructor . fst) cts)
                ])
-        DRecord _ ->
+        DRecord _ _a ->
           WL.annotate a $
           text
             (mconcat
@@ -165,11 +165,11 @@ ppType :: Ground l => Type l -> Text
 ppType =
   ppType' mempty False
 
-ppTypeInfo :: Ground l => TypeDecls l -> Type l -> Text
+ppTypeInfo :: Ground l => TypeDecls l a -> Type l -> Text
 ppTypeInfo ctx =
   ppType' ctx True
 
-ppType' :: Ground l => TypeDecls l -> Bool -> Type l -> Text
+ppType' :: Ground l => TypeDecls l a -> Bool -> Type l -> Text
 ppType' ctx verbose t =
   case t of
     Type (TLitF g) ->
@@ -178,9 +178,9 @@ ppType' ctx verbose t =
     Type (TVarF tn@(TypeName ty)) ->
       let mty = lookupType tn ctx
       in ty <> case (verbose, mty) of
-           (True, Just (DVariant cts)) ->
+           (True, Just (DVariant cts _a)) ->
              " = " <> ppConstructors cts
-           (True, Just (DRecord fts)) ->
+           (True, Just (DRecord fts _a)) ->
              " = " <> ppRecordFields fts
            (False, _) ->
              T.empty

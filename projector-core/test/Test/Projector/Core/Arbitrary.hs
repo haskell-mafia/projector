@@ -150,9 +150,9 @@ genPattern c n =
 
 genTypeDecls ::
      Ground l
-  => TypeDecls l
+  => TypeDecls l ()
   -> Jack l
-  -> Jack (TypeDecls l)
+  -> Jack (TypeDecls l ())
 genTypeDecls tc gt = do
   nTypes <- chooseInt (0, 20)
   nCons <- chooseInt (0, 100)
@@ -165,8 +165,8 @@ genTypeDecls' ::
   => Jack l
   -> [TypeName]
   -> [Constructor]
-  -> TypeDecls l
-  -> Jack (TypeDecls l)
+  -> TypeDecls l ()
+  -> Jack (TypeDecls l ())
 genTypeDecls' _ [] _ tc =
   pure tc
 genTypeDecls' _ _ [] tc =
@@ -175,16 +175,16 @@ genTypeDecls' g tts@(t:ts) (c:cs) tc =
   oneOf [
       do
        (vars, cs') <- genVariantsFromContext' g c cs tc
-       let ty = DVariant vars
+       let ty = DVariant vars ()
        genTypeDecls' g ts cs' (declareType t ty tc)
     , do
        fts <- genRecordFromContext' g tc
-       let ty = DRecord fts
+       let ty = DRecord fts ()
            tn = TypeName (unConstructor c)
        genTypeDecls' g tts cs (declareType tn ty tc)
     ]
 
-genRecordFromContext' :: Ground l => Jack l -> TypeDecls l -> Jack [(FieldName, Type l)]
+genRecordFromContext' :: Ground l => Jack l -> TypeDecls l () -> Jack [(FieldName, Type l)]
 genRecordFromContext' g tc = do
   k <- chooseInt (0, 5)
   fns <- fmap toList (genSizedSet k genFieldName)
@@ -201,7 +201,7 @@ genVariantsFromContext' ::
   => Jack l
   -> Constructor
   -> [Constructor]
-  -> TypeDecls l
+  -> TypeDecls l ()
   -> Jack ([(Constructor, [Type l])], [Constructor])
 genVariantsFromContext' g c cs tc = do
   -- Generate a nonrecursive branch first
@@ -214,7 +214,7 @@ genVariantsFromContext' g c cs tc = do
   pure (nonrec:recs, cs'')
 
 -- Generate simple types, or pull one from the context.
-genTypeFromContext :: Ground l => TypeDecls l -> Jack l -> Jack (Type l)
+genTypeFromContext :: Ground l => TypeDecls l () -> Jack l -> Jack (Type l)
 genTypeFromContext tc@(TypeDecls m) g =
   if m == mempty
     then oneOfRec [
@@ -247,7 +247,7 @@ centy =
 
 cextend ::
      (Ground l, Ord l)
-  => TypeDecls l
+  => TypeDecls l ()
   -> Context l
   -> Type l
   -> Name
@@ -268,7 +268,7 @@ plookup ctx want =
     catMaybes (fmap (\(n, t1) -> M.lookup n (cnames ctx) >>= \t2 -> guard (t2 == t1) *> pure (n, t1)) nts)
 
 -- record all the types we can reach via the recorded type
-pinsert :: (Ground l, Ord l) => TypeDecls l -> Context l -> Name -> Type l -> Context l
+pinsert :: (Ground l, Ord l) => TypeDecls l () -> Context l -> Name -> Type l -> Context l
 pinsert ctx (Context ns p) n t =
   Context ns . mcons t (n, t) $ case t of
     Type (TLitF _) ->
@@ -288,10 +288,10 @@ pinsert ctx (Context ns p) n t =
       p
 
 -- figure out all the types we can reach via this type declaration
-declPaths :: Ord l => Name -> Type l -> Paths l -> Decl l -> Paths l
+declPaths :: Ord l => Name -> Type l -> Paths l -> Decl l () -> Paths l
 declPaths n t p ty =
   case ty of
-    DVariant cts ->
+    DVariant cts _a ->
       -- break it apart just one tier (top level types in in our constructors)
       -- TODO: try recursing, might be cool
       foldl'
@@ -303,7 +303,7 @@ declPaths n t p ty =
             ts)
         p
         cts
-    DRecord fts ->
+    DRecord fts _a ->
       foldl' (\m (_fn, ft) -> mcons ft (n, t) m) p fts
 
 mcons :: Ord k => k -> v -> Map k [v] -> Map k [v]
@@ -312,7 +312,7 @@ mcons k v =
 
 genWellTypedExpr ::
      (Ground l, Ord l)
-  => TypeDecls l
+  => TypeDecls l ()
   -> Type l
   -> Jack (Type l)
   -> (l -> Jack (Value l))
@@ -326,7 +326,7 @@ genWellTypedExpr' ::
      (Ground l, Ord l)
   => Int
   -> Type l
-  -> TypeDecls l
+  -> TypeDecls l ()
   -> Context l
   -> Jack (Type l)
   -> (l -> Jack (Value l))
@@ -341,11 +341,11 @@ genWellTypedExpr' n ty ctx names genty genval =
         Type (TVarF x) ->
           -- Look it up in ctx
           case lookupType x ctx of
-            Just (DVariant cts) -> do
+            Just (DVariant cts _a) -> do
               (conn, tys) <- elements cts
               con conn x <$> traverse (\t -> genWellTypedExpr' (n `div` (length tys)) t ctx names genty genval) tys
 
-            Just (DRecord fts) -> do
+            Just (DRecord fts _a) -> do
               rec_ x
                 <$> traverse (traverse (\t -> genWellTypedExpr' (n `div` (max 1 (length fts))) t ctx names genty genval)) fts
 
@@ -388,7 +388,7 @@ partitionPaths =
 -- Given a known path to some type, generate an expression of that type.
 genWellTypedPath ::
      (Ord l, Ground l)
-  => TypeDecls l
+  => TypeDecls l ()
   -> Context l
   -> (Context l -> Type l -> Jack (Expr l ()))
   -> Type l
@@ -421,9 +421,9 @@ genWellTypedPath ctx names more want x have =
       Type (TVarF n) ->
         -- look up in ctx, run with that
         case lookupType n ctx of
-          Just (DVariant cts) ->
+          Just (DVariant cts _a) ->
             case_ (var x) <$> genAlternatives ctx names more cts want
-          Just (DRecord fts) ->
+          Just (DRecord fts _a) ->
             maybe (fail "invariant fail: can't find type in record!")
               (\(fn, _ft) -> pure (prj (var x) fn))
               (P.find (\(_fn,ft) -> ft == want) fts)
@@ -432,7 +432,7 @@ genWellTypedPath ctx names more want x have =
 
 genAlternatives ::
      (Ord l, Ground l)
-  => TypeDecls l
+  => TypeDecls l ()
   -> Context l
   -> (Context l -> Type l -> Jack (Expr l ()))
   -> [(Constructor, [Type l])]
@@ -458,7 +458,7 @@ genWellTypedLam ::
   => Int
   -> Type l -- bound type
   -> Type l -- result type
-  -> TypeDecls l
+  -> TypeDecls l ()
   -> Context l
   -> Jack (Type l)
   -> (l -> Jack (Value l))
@@ -472,7 +472,7 @@ genWellTypedApp ::
      (Ground l, Ord l)
   => Int
   -> Type l
-  -> TypeDecls l
+  -> TypeDecls l ()
   -> Context l
   -> Jack (Type l)
   -> (l -> Jack (Value l))
@@ -494,7 +494,7 @@ genWellTypedApp n ty ctx names genty genval = do
 genWellTypedLetrec ::
      (Ground l, Ord l)
   => Int
-  -> TypeDecls l
+  -> TypeDecls l ()
   -> Map Name (Type l)
   -> Jack (Type l)
   -> (l -> Jack (Value l))
@@ -517,7 +517,7 @@ genWellTypedLetrec n decls known genty genval = do
 
 genIllTypedExpr ::
      (Ground l, Ord l)
-  => TypeDecls l
+  => TypeDecls l ()
   -> Jack (Type l)
   -> (l -> Jack (Value l))
   -> Jack (Expr l ())
@@ -529,7 +529,7 @@ genIllTypedExpr ctx genty genval =
 genIllTypedExpr' ::
      (Ground l, Ord l)
   => Int
-  -> TypeDecls l
+  -> TypeDecls l ()
   -> Context l
   -> Jack (Type l)
   -> (l -> Jack (Value l))
@@ -554,9 +554,9 @@ genIllTypedExpr' n ctx names genty genval =
         -- then put some bound variable of a different type in the case statement
         (tn, decl) <- elements (M.toList (unTypeDecls ctx))
         let cts = case decl of
-              DVariant dts ->
+              DVariant dts _a ->
                 dts
-              DRecord fts ->
+              DRecord fts _a ->
                 [(Constructor (unTypeName tn), fmap snd fts)]
         nty <- genty `suchThat` (/= TVar tn)
         na <- fmap Name (elements muppets) -- name for the value of Variant type
@@ -579,9 +579,9 @@ genIllTypedExpr' n ctx names genty genval =
 
         (tn, decl) <- elements (M.toList (unTypeDecls ctx))
         let cts = case decl of
-              DVariant dts ->
+              DVariant dts _a ->
                 dts
-              DRecord fts ->
+              DRecord fts _a ->
                 [(Constructor (unTypeName tn), fmap snd fts)]
 
         nn <- fmap Name (elements muppets)
@@ -603,9 +603,9 @@ genIllTypedExpr' n ctx names genty genval =
         -- grab some variant
         (tn, decl) <- elements (M.toList (unTypeDecls ctx))
         let cts = case decl of
-              DVariant dts ->
+              DVariant dts _a ->
                 dts
-              DRecord fts ->
+              DRecord fts _a ->
                 [(Constructor (unTypeName tn), fmap snd fts)]
 
 
@@ -754,17 +754,17 @@ genTestExpr :: Jack (Expr TestLitT ())
 genTestExpr =
   genExpr (fmap Name (elements muppets)) (genType genTestLitT) genTestLitValue
 
-genWellTypedTestExpr :: TypeDecls TestLitT -> Type TestLitT -> Jack (Expr TestLitT ())
+genWellTypedTestExpr :: TypeDecls TestLitT () -> Type TestLitT -> Jack (Expr TestLitT ())
 genWellTypedTestExpr ctx ty = do
   genWellTypedExpr ctx ty (genTypeFromContext ctx genTestLitT) genWellTypedTestLitValue
 
-genWellTypedTestExpr' :: Jack (Type TestLitT, TypeDecls TestLitT, Expr TestLitT ())
+genWellTypedTestExpr' :: Jack (Type TestLitT, TypeDecls TestLitT (), Expr TestLitT ())
 genWellTypedTestExpr' = do
   ctx <- genTestTypeDecls
   ty <- genTestType ctx
   (ty, ctx,) <$> genWellTypedTestExpr ctx ty
 
-genWellTypedTestLetrec :: Jack (TypeDecls TestLitT, Map Name (Type TestLitT, Expr TestLitT ()))
+genWellTypedTestLetrec :: Jack (TypeDecls TestLitT (), Map Name (Type TestLitT, Expr TestLitT ()))
 genWellTypedTestLetrec =
   sized $ \n -> do
     k <- chooseInt (0, n)
@@ -772,19 +772,19 @@ genWellTypedTestLetrec =
     res <- genWellTypedLetrec k ctx mempty (genTypeFromContext ctx genTestLitT) genWellTypedTestLitValue
     pure (ctx, res)
 
-genIllTypedTestExpr :: TypeDecls TestLitT -> Jack (Expr TestLitT ())
+genIllTypedTestExpr :: TypeDecls TestLitT () -> Jack (Expr TestLitT ())
 genIllTypedTestExpr ctx = do
   genIllTypedExpr ctx (genTypeFromContext ctx genTestLitT) genWellTypedTestLitValue
 
-genIllTypedTestExpr' :: Jack (TypeDecls TestLitT, Expr TestLitT ())
+genIllTypedTestExpr' :: Jack (TypeDecls TestLitT (), Expr TestLitT ())
 genIllTypedTestExpr' = do
   ctx <- genTestTypeDecls
   (ctx,) <$> genIllTypedExpr ctx (genTypeFromContext ctx genTestLitT) genWellTypedTestLitValue
 
-genTestTypeDecls :: Jack (TypeDecls TestLitT)
+genTestTypeDecls :: Jack (TypeDecls TestLitT ())
 genTestTypeDecls
   = genTypeDecls mempty genTestLitT
 
-genTestType :: TypeDecls TestLitT -> Jack (Type TestLitT)
+genTestType :: TypeDecls TestLitT () -> Jack (Type TestLitT)
 genTestType tc =
   genTypeFromContext tc genTestLitT

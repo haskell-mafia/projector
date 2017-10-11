@@ -71,15 +71,15 @@ nRecord :: TypeName
 nRecord =
   TypeName "Record"
 
-tRecord :: Decl TestLitT
+tRecord :: Decl TestLitT ()
 tRecord =
   DRecord [
       (FieldName "foo", TLit TBool)
     , (FieldName "bar", TLit TString)
     , (FieldName "baz", TLit TInt)
-    ]
+    ] ()
 
-dRecord :: TypeDecls TestLitT
+dRecord :: TypeDecls TestLitT ()
 dRecord =
   declareType nRecord tRecord mempty
 

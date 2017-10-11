@@ -79,7 +79,7 @@ warnShadowing bound expr =
 -- -----------------------------------------------------------------------------
 -- Pattern exhaustivity
 
-warnExhaustivity :: Ground l => TypeDecls l -> Expr l a -> Either [Warning l a] ()
+warnExhaustivity :: Ground l => TypeDecls l a -> Expr l a -> Either [Warning l a] ()
 warnExhaustivity decls =
   void . first D.toList . sequenceEither .
     foldrExpr
@@ -87,7 +87,7 @@ warnExhaustivity decls =
       (\_ xs -> xs)
       []
 
-checkExhaustivity :: Ground l => TypeDecls l -> Expr l a -> Either (Warning l a) ()
+checkExhaustivity :: Ground l => TypeDecls l a -> Expr l a -> Either (Warning l a) ()
 checkExhaustivity decls expr =
   case expr of
     ECase a _ pes ->
@@ -95,11 +95,11 @@ checkExhaustivity decls expr =
     _ ->
       pure ()
 
-checkPatternExhaustivity :: Ground l => a -> TypeDecls l -> [Pattern a] -> Either (Warning l a) ()
+checkPatternExhaustivity :: Ground l => a -> TypeDecls l a -> [Pattern a] -> Either (Warning l a) ()
 checkPatternExhaustivity a decls pats =
   exhaustiveMatchTree a decls (buildMatchTree pats)
 
-exhaustiveMatchTree :: Ground l => a -> TypeDecls l -> MatchTree -> Either (Warning l a) ()
+exhaustiveMatchTree :: Ground l => a -> TypeDecls l a -> MatchTree -> Either (Warning l a) ()
 exhaustiveMatchTree a decls mt@(MatchTree mtt) =
   -- If this tier contains a PVar, stop.
   mcase (matchTier mt) (pure ()) $ \seen -> do
@@ -127,16 +127,16 @@ matchTier (MatchTree mt) =
     mempty
     mt
 
-checkSet :: Ground l => a -> TypeDecls l -> Set Constructor -> Either (Warning l a) ()
+checkSet :: Ground l => a -> TypeDecls l a -> Set Constructor -> Either (Warning l a) ()
 checkSet a decls seen =
   fromMaybe (Left (Invariant "BUG: Could not determine type (checkSet)")) $ do
     witness <- head seen
     (tn, _tys) <- lookupConstructor witness decls
     defn <- lookupType tn decls
     let missing = case defn of
-          DVariant cts ->
+          DVariant cts _a ->
             S.difference (S.fromList (fmap fst cts)) seen
-          DRecord _ ->
+          DRecord _ _a ->
             S.difference (S.singleton (Constructor (unTypeName tn))) seen
     pure $
       if missing == S.empty

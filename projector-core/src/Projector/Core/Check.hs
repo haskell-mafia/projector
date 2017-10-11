@@ -55,7 +55,7 @@ data TypeError l a
   = UnificationError (Type l, a) (Type l, a)
   | FreeVariable Name a
   | UndeclaredType TypeName a
-  | BadConstructorName Constructor TypeName (Decl l) a
+  | BadConstructorName Constructor TypeName (Decl l a) a
   | BadConstructorArity Constructor Int Int a
   | BadPatternArity Constructor (Type l) Int Int a
   | BadPatternConstructor Constructor a
@@ -78,7 +78,7 @@ deriving instance (Ground l, Ord a) => Ord (TypeError l a)
 -- (dependency-ordered) typechecking.
 typeCheckIncremental ::
      Ground l
-  => TypeDecls l
+  => TypeDecls l a
   -> Map Name (Type l, a)
   -> Map Name (Expr l a)
   -> Either [TypeError l a] (Map Name (Expr l (Type l, a)))
@@ -96,7 +96,7 @@ typeCheckIncremental decls known exprs =
 -- dependency DAG, and traverse only the dirty subtrees of that DAG.
 typeCheckAll ::
      Ground l
-  => TypeDecls l
+  => TypeDecls l a
   -> Map Name (Expr l a)
   -> Either [TypeError l a] (Map Name (Expr l (Type l, a)))
 typeCheckAll decls exprs =
@@ -104,7 +104,7 @@ typeCheckAll decls exprs =
 
 typeCheckAll' ::
      Ground l
-  => TypeDecls l
+  => TypeDecls l a
   -> Map Name (IType l a)
   -> Map Name (Expr l a)
   -> Either [TypeError l a] (Map Name (Expr l (Type l, a)))
@@ -147,13 +147,13 @@ typeCheckAll' decls known exprs = do
   -- lower them from IType into Type, all at once
   first D.toList (ET.sequenceEither (fmap lowerExpr subbed))
 
-typeCheck :: Ground l => TypeDecls l -> Expr l a -> Either [TypeError l a] (Type l)
+typeCheck :: Ground l => TypeDecls l a -> Expr l a -> Either [TypeError l a] (Type l)
 typeCheck decls =
   fmap extractType . typeTree decls
 
 typeTree ::
      Ground l
-  => TypeDecls l
+  => TypeDecls l a
   -> Expr l a
   -> Either [TypeError l a] (Expr l (Type l, a))
 typeTree decls expr = do
@@ -201,16 +201,16 @@ field fn ty =
   Fields (M.fromList [(fn, ty)])
 
 -- | Lift a known type into an 'IType', with an annotation.
-hoistType :: Ground l => TypeDecls l -> a -> Type l -> IType l a
+hoistType :: Ground l => TypeDecls l a -> a -> Type l -> IType l a
 hoistType decls a (Type ty) =
   case ty of
     TLitF l ->
       ILit a l
     TVarF tn ->
       case lookupType tn decls of
-        Just (DVariant _cns) ->
+        Just (DVariant _cns _a) ->
           IVar a tn
-        Just (DRecord fts) ->
+        Just (DRecord fts _a) ->
           IClosedRecord a tn (hoistFields decls a fts)
         Nothing ->
           -- 'a' or an unknown type.
@@ -224,7 +224,7 @@ hoistType decls a (Type ty) =
     TForallF ps t ->
       IForall a ps (hoistType decls a t)
 
-hoistFields :: Ground l => TypeDecls l -> a -> [(FieldName, Type l)] -> Fields l a
+hoistFields :: Ground l => TypeDecls l a -> a -> [(FieldName, Type l)] -> Fields l a
 hoistFields decls a =
   Fields . M.fromList . fmap (fmap (hoistType decls a))
 
@@ -507,14 +507,14 @@ withBinding x k = do
 
 generateConstraints ::
      Ground l
-  => TypeDecls l
+  => TypeDecls l a
   -> Expr l a
   -> Either [TypeError l a] (Expr l (IType l a, a), [Constraint l a], Assumptions l a)
 generateConstraints decls expr = do
   (e, st) <- runCheck (generateConstraints' decls expr)
   pure (e, D.toList (sConstraints st), sAssumptions st)
 
-generateConstraints' :: Ground l => TypeDecls l -> Expr l a -> Check l a (Expr l (IType l a, a))
+generateConstraints' :: Ground l => TypeDecls l a -> Expr l a -> Check l a (Expr l (IType l a, a))
 generateConstraints' decls expr =
   case expr of
     ELit a v ->
@@ -571,7 +571,7 @@ generateConstraints' decls expr =
 
     ECon a c tn es ->
       case lookupType tn decls of
-        Just ty@(DVariant cns) -> do
+        Just ty@(DVariant cns _a) -> do
           -- Look up the constructor, check its arity, and introduce
           -- constraints for each of its subterms, for which we expect certain types.
           ts <- maybe (throwError (BadConstructorName c tn ty a)) pure (L.lookup c cns)
@@ -583,7 +583,7 @@ generateConstraints' decls expr =
           pure (ECon (ty', a) c tn es')
 
         -- Records should be constructed via ERec, not ECon
-        Just ty@(DRecord _) -> do
+        Just ty@(DRecord _ _a) -> do
           throwError (BadConstructorName c tn ty a)
 
         Nothing ->
@@ -608,7 +608,7 @@ generateConstraints' decls expr =
 
     ERec a tn fes -> do
       case lookupType tn decls of
-        Just (DRecord fts) -> do
+        Just (DRecord fts _a) -> do
           -- recurse into each field
           fes' <- traverse (traverse (generateConstraints' decls)) fes
           let need = M.fromList (fmap (fmap (hoistType decls a)) fts)
@@ -631,7 +631,7 @@ generateConstraints' decls expr =
           pure (ERec (ty', a) tn fes')
 
         -- Variants should be constructed via ECon, not ERec
-        Just ty@(DVariant _) -> do
+        Just ty@(DVariant _ _a) -> do
           throwError (BadConstructorName (Constructor (unTypeName tn)) tn ty a)
 
         Nothing ->
@@ -655,7 +655,7 @@ generateConstraints' decls expr =
 -- | Patterns are binding sites that also introduce lots of new constraints.
 patternConstraints ::
      Ground l
-  => TypeDecls l
+  => TypeDecls l a
   -> IType l a
   -> Pattern a
   -> Check l a (Pattern (IType l a, a))
