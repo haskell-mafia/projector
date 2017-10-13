@@ -53,7 +53,7 @@ import           Projector.Html.Data.Annotation
 import           Projector.Html.Data.Prim
 
 
-types :: HtmlDecls
+types :: HtmlDecls (Annotation a)
 types =
   TypeDecls $ M.fromList [
       (nTag, dTag)
@@ -81,11 +81,15 @@ tTag :: HtmlType
 tTag =
   TVar nTag
 
-dTag :: HtmlDecl
+dTag :: HtmlDecl (Annotation a)
 dTag =
   DVariant [
       (Constructor "Tag", [TLit TString])
-    ]
+    ] aTag
+
+aTag :: Annotation a
+aTag =
+  LibraryType nTag
 
 -- -----------------------------------------------------------------------------
 
@@ -97,11 +101,15 @@ tAttribute :: HtmlType
 tAttribute =
   TVar nAttribute
 
-dAttribute :: HtmlDecl
+dAttribute :: HtmlDecl (Annotation a)
 dAttribute =
   DVariant [
       (Constructor "Attribute", [tAttributeKey, tAttributeValue])
-    ]
+    ] aAttribute
+
+aAttribute :: Annotation a
+aAttribute =
+  LibraryType nAttribute
 
 -- -----------------------------------------------------------------------------
 
@@ -113,11 +121,15 @@ tAttributeKey :: HtmlType
 tAttributeKey =
   TVar nAttributeKey
 
-dAttributeKey :: HtmlDecl
+dAttributeKey :: HtmlDecl (Annotation a)
 dAttributeKey =
   DVariant [
       (Constructor "AttributeKey", [TLit TString])
-    ]
+    ] aAttributeKey
+
+aAttributeKey :: Annotation a
+aAttributeKey =
+  LibraryType nAttributeKey
 
 -- -----------------------------------------------------------------------------
 
@@ -129,11 +141,15 @@ tAttributeValue :: HtmlType
 tAttributeValue =
   TVar nAttributeValue
 
-dAttributeValue :: HtmlDecl
+dAttributeValue :: HtmlDecl (Annotation a)
 dAttributeValue =
   DVariant [
       (Constructor "AttributeValue", [TLit TString])
-    ]
+    ] aAttributeValue
+
+aAttributeValue :: Annotation a
+aAttributeValue =
+  LibraryType nAttributeValue
 
 -- -----------------------------------------------------------------------------
 
@@ -145,7 +161,7 @@ tHtml :: HtmlType
 tHtml =
   TVar nHtml
 
-dHtml :: HtmlDecl
+dHtml :: HtmlDecl (Annotation a)
 dHtml =
   DVariant [
       (Constructor "Element", [tTag, TList tAttribute, tHtml])
@@ -154,7 +170,11 @@ dHtml =
     , (Constructor "Plain", [TLit TString])
     , (Constructor "Raw", [TLit TString])
     , (Constructor "Nested", [TList tHtml])
-    ]
+    ] aHtml
+
+aHtml :: Annotation a
+aHtml =
+  LibraryType nHtml
 
 -- -----------------------------------------------------------------------------
 

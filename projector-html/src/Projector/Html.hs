@@ -108,14 +108,14 @@ parseTemplate f =
   first HtmlSyntaxError . Syntax.templateFromText f
 
 checkTemplate ::
-     HtmlDecls
+     HtmlDecls SrcAnnotation
   -> Template Range
   -> Either HtmlError (HtmlType, HtmlExpr (HtmlType, SrcAnnotation))
 checkTemplate decls =
   checkTemplateIncremental decls mempty
 
 checkTemplateIncremental ::
-     HtmlDecls
+     HtmlDecls SrcAnnotation
   -> Map Text (HtmlType, SrcAnnotation)
   -> Template Range
   -> Either HtmlError (HtmlType, HtmlExpr (HtmlType, SrcAnnotation))
@@ -126,14 +126,14 @@ checkTemplateIncremental decls known t = do
   checkExprIncremental decls (known <> tcon) ast
 
 checkExpr ::
-     HtmlDecls
+     HtmlDecls SrcAnnotation
   -> HtmlExpr SrcAnnotation
   -> Either HtmlError (HtmlType, HtmlExpr (HtmlType, SrcAnnotation))
 checkExpr decls =
   checkExprIncremental decls mempty
 
 checkExprIncremental ::
-     HtmlDecls
+     HtmlDecls SrcAnnotation
   -> Map Text (HtmlType, SrcAnnotation)
   -> HtmlExpr SrcAnnotation
   -> Either HtmlError (HtmlType, HtmlExpr (HtmlType, SrcAnnotation))
@@ -153,10 +153,10 @@ defaultName :: Text
 defaultName = "it"
 
 checkModule ::
-     HtmlDecls
+     HtmlDecls SrcAnnotation
   -> Map PC.Name (HtmlType, SrcAnnotation)
-  -> HB.Module (Maybe HtmlType) PrimT SrcAnnotation
-  -> Either HtmlError (HB.Module HtmlType PrimT (HtmlType, SrcAnnotation))
+  -> HB.Module (Maybe HtmlType) PrimT SrcAnnotation SrcAnnotation
+  -> Either HtmlError (HB.Module HtmlType PrimT SrcAnnotation (HtmlType, SrcAnnotation))
 checkModule decls known (HB.Module typs imps exps) = do
   exps' <-
     bimap HtmlCoreError (fmap (uncurry HB.ModuleExpr))
@@ -176,10 +176,10 @@ checkModule decls known (HB.Module typs imps exps) = do
 -- | Figure out the dependency order of a set of modules, then
 -- typecheck them all in that order.
 checkModules ::
-     HtmlDecls
+     HtmlDecls SrcAnnotation
   -> Map PC.Name (HtmlType, SrcAnnotation)
-  -> Map HB.ModuleName (HB.Module (Maybe HtmlType) PrimT SrcAnnotation)
-  -> Either HtmlError (Map HB.ModuleName (HB.Module HtmlType PrimT (HtmlType, SrcAnnotation)))
+  -> Map HB.ModuleName (HB.Module (Maybe HtmlType) PrimT SrcAnnotation SrcAnnotation)
+  -> Either HtmlError (Map HB.ModuleName (HB.Module HtmlType PrimT SrcAnnotation (HtmlType, SrcAnnotation)))
 checkModules decls known exprs =
   -- FIX Check for duplicate function names here somewhere
   first HtmlCoreError (fmap fst (foldM fun (mempty, initialKnown) deps))
@@ -223,15 +223,15 @@ codeGen backend cgn pcons (BuildArtefacts decls nmap checked) = do
 
 codeGenModule ::
      HB.Backend a e
-  -> HtmlDecls
+  -> HtmlDecls a
   -> HB.ModuleName
-  -> HB.Module HtmlType PrimT (HtmlType, a)
+  -> HB.Module HtmlType PrimT a (HtmlType, a)
   -> Either e (FilePath, Text)
 codeGenModule =
   HB.renderModule
 
 -- | Apply a 'CodeGenNamer' to some module.
-codeGenRename :: TemplateNameMap -> CodeGenNamer -> HB.Module a b c -> HB.Module a b c
+codeGenRename :: TemplateNameMap -> CodeGenNamer -> HB.Module a b c d -> HB.Module a b c d
 codeGenRename (TemplateNameMap nmap) cgn (HB.Module ts is es) =
   let renameDef n = maybe n (uncurry (templateNameToBackendName cgn n)) (M.lookup n nmap)
       renameVal n = maybe n (uncurry (templateDefToBackendDef cgn n)) (M.lookup n nmap)
@@ -240,8 +240,8 @@ codeGenRename (TemplateNameMap nmap) cgn (HB.Module ts is es) =
 
 substPlatformConstants ::
      PlatformConstants
-  -> HB.Module b PrimT (HtmlType, SrcAnnotation)
-  -> HB.Module b PrimT (HtmlType, SrcAnnotation)
+  -> HB.Module b PrimT SrcAnnotation (HtmlType, SrcAnnotation)
+  -> HB.Module b PrimT SrcAnnotation (HtmlType, SrcAnnotation)
 substPlatformConstants pcons (HB.Module ts is es) =
   HB.Module ts is . with es $ \(HB.ModuleExpr a x) ->
     HB.ModuleExpr a (PC.substitute (platformConstants pcons) x)
@@ -269,19 +269,19 @@ newtype RawTemplates = RawTemplates {
   } deriving (Eq, Ord, Show)
 
 data BuildArtefacts = BuildArtefacts {
-    buildArtefactsDecls :: HtmlDecls
+    buildArtefactsDecls :: HtmlDecls SrcAnnotation
   , buildArtefactsNameMap :: TemplateNameMap
   , buildArtefactsHtmlModules :: HtmlModules
   } deriving (Eq, Show)
 
-type HtmlModules = Map HB.ModuleName (HB.Module HtmlType PrimT (HtmlType, SrcAnnotation))
+type HtmlModules = Map HB.ModuleName (HB.Module HtmlType PrimT SrcAnnotation (HtmlType, SrcAnnotation))
 
 newtype DataModuleName = DataModuleName {
     unDataModuleName :: HB.ModuleName
   } deriving (Eq, Ord, Show)
 
 newtype UserDataTypes = UserDataTypes {
-    unUserDataTypes :: HtmlDecls
+    unUserDataTypes :: HtmlDecls SrcAnnotation
   } deriving (Eq, Ord, Show, Monoid)
 
 data ModuleNamer = ModuleNamer {
@@ -351,12 +351,12 @@ primExprs =
   M.mapWithKey (\n (ty,_e) -> (ty, LibraryFunction n)) HC.primExprs
 
 -- | Run a set of backend-specific predicates.
-validateModules :: HB.Backend a e -> Map HB.ModuleName (HB.Module HtmlType PrimT b) -> Either [e] ()
+validateModules :: HB.Backend a e -> Map HB.ModuleName (HB.Module HtmlType PrimT b c) -> Either [e] ()
 validateModules backend mods =
   fmap (const ()) (sequenceEither (with mods (HB.checkModule backend)))
 
 -- | Look for anything we can warn about.
-warnModules :: HtmlDecls -> HtmlModules -> Either [HtmlError] ()
+warnModules :: HtmlDecls SrcAnnotation -> HtmlModules -> Either [HtmlError] ()
 warnModules decls mods =
   let binds = S.fromList (M.keys (HB.extractModuleBindings mods))
       exprs = fmap (fmap snd) (HB.extractModuleExprs mods)
@@ -382,7 +382,7 @@ smush ::
   -> RawTemplates
   -> Either
        [HtmlError]
-       (ModuleGraph, TemplateNameMap, Map HB.ModuleName (HB.Module (Maybe HtmlType) PrimT SrcAnnotation))
+       (ModuleGraph, TemplateNameMap, Map HB.ModuleName (HB.Module (Maybe HtmlType) PrimT SrcAnnotation SrcAnnotation))
 smush mdm mnr hms (RawTemplates templates) = do
   let
     known = fmap (M.keysSet . HB.moduleExprs) hms

@@ -49,11 +49,11 @@ newtype DependencyGraph = DependencyGraph {
 -- | Figure out the complete set of imports for a set of modules.
 -- Since we have globally-unique names (i.e. our modules are a
 -- compilation detail), we can figure these out automatically.
-deriveImports :: Map ModuleName (Module b l a) -> Map ModuleName (Module b l a)
+deriveImports :: Map ModuleName (Module b l a h) -> Map ModuleName (Module b l a h)
 deriveImports =
   deriveImportsIncremental mempty
 
-deriveImportsIncremental :: Map ModuleName (Set Name) -> Map ModuleName (Module b l a) -> Map ModuleName (Module b l a)
+deriveImportsIncremental :: Map ModuleName (Set Name) -> Map ModuleName (Module b l a h) -> Map ModuleName (Module b l a h)
 deriveImportsIncremental known mods =
   let modfrees :: Map ModuleName (Set Name)
       modfrees = fmap moduleFree mods
@@ -73,7 +73,7 @@ deriveImportsIncremental known mods =
 
 
 -- | Construct the module graph for some set of modules.
-buildModuleGraph :: Map ModuleName (Module b l a) -> ModuleGraph
+buildModuleGraph :: Map ModuleName (Module b l a h) -> ModuleGraph
 buildModuleGraph mods =
   ModuleGraph (with mods (\(Module _typs imps _exps) -> S.fromList (M.keys imps)))
 

@@ -41,7 +41,7 @@ import           Projector.Html.Data.Annotation
 import           Projector.Html.Data.Prim
 
 
-types :: HtmlDecls
+types :: HtmlDecls (Annotation a)
 types =
   TypeDecls $ M.fromList [
       (nBool, dBool)
@@ -65,13 +65,16 @@ tBool :: HtmlType
 tBool =
   TVar nBool
 
-dBool :: HtmlDecl
+dBool :: HtmlDecl (Annotation a)
 dBool =
   DVariant [
       (Constructor "True", [])
     , (Constructor "False", [])
-    ]
+    ] aBool
 
+aBool :: Annotation a
+aBool =
+  LibraryType nBool
 
 -- -----------------------------------------------------------------------------
 

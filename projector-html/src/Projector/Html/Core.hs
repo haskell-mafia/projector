@@ -75,30 +75,30 @@ templateToCore t = do
   ast <- first HtmlElabError (Elab.elaborate t)
   typeTree ast
 
-typeCheck :: HtmlExpr a -> Either (CoreError a) HtmlType
+typeCheck :: HtmlExpr (Annotation a) -> Either (CoreError (Annotation a)) HtmlType
 typeCheck =
   fmap fst . typeTree
 
-typeTree :: HtmlExpr a -> Either (CoreError a) (HtmlType, HtmlExpr (HtmlType, a))
+typeTree :: HtmlExpr (Annotation a) -> Either (CoreError (Annotation a)) (HtmlType, HtmlExpr (HtmlType, Annotation a))
 typeTree =
    first HtmlTypeError . fmap (\e -> (extractType e, e)) . PC.typeTree htmlTypes
 
 typeCheckAll ::
-     HtmlDecls
-  -> Map PC.Name (HtmlExpr a)
-  -> Either (CoreError a) (Map PC.Name (HtmlType, HtmlExpr (HtmlType, a)))
+     HtmlDecls (Annotation a)
+  -> Map PC.Name (HtmlExpr (Annotation a))
+  -> Either (CoreError (Annotation a)) (Map PC.Name (HtmlType, HtmlExpr (HtmlType, (Annotation a))))
 typeCheckAll typs =
   first HtmlTypeError . fmap (fmap (\e -> (extractType e, e))) . PC.typeCheckAll (typs <> htmlTypes)
 
 typeCheckIncremental ::
-     HtmlDecls
-  -> Map PC.Name (HtmlType, a)
-  -> Map PC.Name (HtmlExpr a)
-  -> Either (CoreError a) (Map PC.Name (HtmlType, HtmlExpr (HtmlType, a)))
+     HtmlDecls (Annotation a)
+  -> Map PC.Name (HtmlType, (Annotation a))
+  -> Map PC.Name (HtmlExpr (Annotation a))
+  -> Either (CoreError (Annotation a)) (Map PC.Name (HtmlType, HtmlExpr (HtmlType, (Annotation a))))
 typeCheckIncremental typs known =
   first HtmlTypeError . fmap (fmap (\e -> (extractType e, e))) . PC.typeCheckIncremental (htmlTypes <> typs) known
 
-htmlTypes :: HtmlDecls
+htmlTypes :: HtmlDecls (Annotation a)
 htmlTypes =
   Prim.types <> Library.types
 
@@ -115,15 +115,15 @@ extractType =
   fst . PC.extractAnnotation
 
 -- Produce regular curried functions for each constructor.
-constructorFunctions :: PC.TypeDecls a -> Map PC.Name (PC.Type a, PC.Expr a (PC.Type a, Annotation b))
+constructorFunctions :: PC.TypeDecls a b -> Map PC.Name (PC.Type a, PC.Expr a (PC.Type a, b))
 constructorFunctions (PC.TypeDecls m) =
   M.fromList $ M.toList m >>= \(tn, decl) ->
     case decl of
-      PC.DVariant cts ->
+      PC.DVariant cts a ->
         with cts $ \(c@(PC.Constructor cn), ts) ->
-          (PC.Name cn, (foldr PC.TArrow (PC.TVar tn) ts, mkCon (DataConstructor c tn) c tn ts))
-      PC.DRecord fts ->
-        [(PC.Name (PC.unTypeName tn), (foldr PC.TArrow (PC.TVar tn) (fmap snd fts), mkRec (RecordConstructor tn) tn fts))]
+          (PC.Name cn, (foldr PC.TArrow (PC.TVar tn) ts, mkCon a c tn ts))
+      PC.DRecord fts a ->
+        [(PC.Name (PC.unTypeName tn), (foldr PC.TArrow (PC.TVar tn) (fmap snd fts), mkRec a tn fts))]
 
 mkCon :: a -> PC.Constructor -> PC.TypeName -> [PC.Type l] -> PC.Expr l (PC.Type l, a)
 mkCon a c tn ts =
@@ -151,10 +151,10 @@ intVar x =
     (m, n) ->
       PC.Name (T.pack [letter m] <> renderIntegral n)
 
-constructorFunctionExprs :: PC.TypeDecls l -> Map PC.Name (PC.Expr l (PC.Type l, Annotation b))
+constructorFunctionExprs :: PC.TypeDecls l b -> Map PC.Name (PC.Expr l (PC.Type l, b))
 constructorFunctionExprs =
   fmap snd . constructorFunctions
 
-constructorFunctionTypes :: PC.TypeDecls a -> Map PC.Name (PC.Type a, Annotation b)
+constructorFunctionTypes :: PC.TypeDecls a b -> Map PC.Name (PC.Type a, b)
 constructorFunctionTypes =
   fmap (fmap (snd . PC.extractAnnotation)) . constructorFunctions

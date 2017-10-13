@@ -18,25 +18,27 @@ import           Projector.Html.Data.Prim
 
 -- | Convert a set of Machinator definitions to a Projector
 -- declaration set.
-machinatorDecls :: Foldable f => f Definition -> HtmlDecls
+machinatorDecls :: Foldable f => f (Definition a) -> HtmlDecls a
 machinatorDecls =
   foldl' (\decls def -> uncurry declareType (fromMachinator def) decls) mempty
-{-# SPECIALIZE machinatorDecls :: [Definition] -> HtmlDecls #-}
+{-# SPECIALIZE machinatorDecls :: [Definition a] -> HtmlDecls a #-}
 
 -- | Convert a Machinator definition to a Projector definition.
-fromMachinator :: Definition -> (TypeName, HtmlDecl)
-fromMachinator (Definition (MC.Name n) dt) =
+fromMachinator :: Definition a -> (TypeName, HtmlDecl a)
+fromMachinator (Definition (MC.Name n) dt _a) =
   (TypeName n, fromMachinatorDT dt)
 
-fromMachinatorDT :: MC.DataType -> HtmlDecl
+fromMachinatorDT :: MC.DataType a -> HtmlDecl a
 fromMachinatorDT dt =
   case dt of
-    MC.Variant nts ->
-      DVariant . toList . with nts $ \(MC.Name n, ts) ->
-        (Constructor n, fmap fromMachinatorT ts)
-    MC.Record fts ->
-      DRecord . with fts $ \(MC.Name n, t) ->
-        (FieldName n, fromMachinatorT t)
+    MC.Variant nts a ->
+      DVariant
+        (toList . with nts $ \(MC.Name n, ts) -> (Constructor n, fmap fromMachinatorT ts))
+        a
+    MC.Record fts a ->
+      DRecord
+        (with fts $ \(MC.Name n, t) -> (FieldName n, fromMachinatorT t))
+        a
 
 fromMachinatorT :: MC.Type -> HtmlType
 fromMachinatorT mt =

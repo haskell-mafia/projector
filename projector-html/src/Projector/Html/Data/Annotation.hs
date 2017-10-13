@@ -17,8 +17,9 @@ data Annotation a
   = EmptyAnnotation
   | SourceAnnotation a
   | LibraryFunction Name
-  | DataConstructor Constructor TypeName
-  | RecordConstructor TypeName
+  | LibraryType TypeName
+  | DataConstructor Constructor TypeName a
+  | RecordConstructor TypeName a
   | TypeSignature a
   | Variable Name a
   | CaseExpression a
@@ -48,10 +49,12 @@ renderAnnotation f ann =
       f r
     LibraryFunction (Name n) ->
       "In the standard library function '" <> n <> "'"
-    DataConstructor (Constructor c) (TypeName tn) ->
-      "In the data constructor '" <> c <> "' for type '" <> tn <> "'"
-    RecordConstructor (TypeName tn) ->
-      "In the constructor for record '" <> tn <> "'"
+    LibraryType (TypeName tn) ->
+      "In the standard library type '" <> tn <> "'"
+    DataConstructor (Constructor c) (TypeName tn) r ->
+      f r <> "in the data constructor '" <> c <> "' for type '" <> tn <> "'"
+    RecordConstructor (TypeName tn) r ->
+      f r <> "in the constructor for record '" <> tn <> "'"
     TypeSignature r ->
       f r <> " in a type signature"
     Variable (Name n) r ->

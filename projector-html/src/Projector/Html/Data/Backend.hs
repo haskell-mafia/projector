@@ -26,8 +26,8 @@ import           System.IO (FilePath)
 -- platform source code, with a validation pass derived from a set of
 -- predicates.
 data Backend a e = Backend {
-    renderModule :: HtmlDecls -> ModuleName -> Module HtmlType PrimT (HtmlType, a) -> Either e (FilePath, Text)
-  , renderExpr :: HtmlDecls -> Name -> HtmlExpr (HtmlType, a) -> Either e Text
+    renderModule :: HtmlDecls a -> ModuleName -> Module HtmlType PrimT a (HtmlType, a) -> Either e (FilePath, Text)
+  , renderExpr :: HtmlDecls a -> Name -> HtmlExpr (HtmlType, a) -> Either e Text
   , predicates :: [Predicate e]
   }
 

@@ -19,7 +19,7 @@ import           Projector.Html.Data.Prim
 -- -----------------------------------------------------------------------------
 -- Per-backend warnings and linting
 
-checkModule :: Backend a e -> Module HtmlType PrimT b -> Either [e] ()
+checkModule :: Backend a e -> Module HtmlType PrimT b h -> Either [e] ()
 checkModule b m =
   case predModule (predicates b) m of
     PredOk ->
@@ -27,7 +27,7 @@ checkModule b m =
     PredError es ->
       Left es
 
-predModule :: [Predicate e] -> Module HtmlType PrimT b -> PredResult [e]
+predModule :: [Predicate e] -> Module HtmlType PrimT b h -> PredResult [e]
 predModule preds =
   fmap fold . predResults . fmap (runPredicates preds . meExpr) . M.elems . moduleExprs
 

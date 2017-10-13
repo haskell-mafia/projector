@@ -37,13 +37,13 @@ moduleNameAppend (ModuleName a) (ModuleName b) =
 
 -- TODO might need another datatype, this bakes in a number of
 -- assumptions about the backend.
-data Module b l a = Module {
-    moduleTypes :: TypeDecls l
+data Module b l a h = Module {
+    moduleTypes :: TypeDecls l a
   , moduleImports :: Map ModuleName Imports
-  , moduleExprs :: Map Name (ModuleExpr b l a)
+  , moduleExprs :: Map Name (ModuleExpr b l h)
   } deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
-instance Ground l => Monoid (Module b l a) where
+instance Ground l => Monoid (Module b l a h) where
   mempty = Module mempty mempty mempty
   mappend (Module a b c) (Module d e f) = Module {
       moduleTypes = a <> d
@@ -57,20 +57,20 @@ data ModuleExpr b l a = ModuleExpr {
   } deriving (Eq, Ord, Show, Functor, Foldable, Traversable)
 
 -- | The names of all free variables referenced in this module.
-moduleFree :: Module b l a -> Set Name
+moduleFree :: Module b l a h -> Set Name
 moduleFree (Module _types _imports exprs) =
   foldl' (flip S.delete) (foldMap (gatherFree . meExpr) exprs) (M.keys exprs)
 
 -- | The names of all variables bound/exported in this module.
-moduleBound :: Module b l a -> Set Name
+moduleBound :: Module b l a h -> Set Name
 moduleBound (Module _types _imports exprs) =
   S.fromList (M.keys exprs)
 
-extractModuleBindings :: Map k (Module b l a) -> Map Name a
+extractModuleBindings :: Map k (Module b l a h) -> Map Name h
 extractModuleBindings =
   foldMap (fmap (extractAnnotation . meExpr) . moduleExprs) . M.elems
 
-extractModuleExprs :: Map k (Module b l a) -> Map Name (Expr l a)
+extractModuleExprs :: Map k (Module b l a h) -> Map Name (Expr l h)
 extractModuleExprs =
   foldMap (fmap meExpr . moduleExprs) . M.elems
 

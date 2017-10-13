@@ -70,7 +70,7 @@ data InterpretError a =
 -- -----------------------------------------------------------------------------
 
 interpret ::
-     HtmlDecls
+     HtmlDecls SrcAnnotation
   -> Map Name (HtmlExpr (HtmlType, SrcAnnotation))
   -> HtmlExpr (HtmlType, SrcAnnotation)
   -> Either (InterpretError (HtmlType, SrcAnnotation)) Html

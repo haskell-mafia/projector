@@ -33,17 +33,17 @@ import           Test.QuickCheck.Jack hiding (listOf1)
 -- -----------------------------------------------------------------------------
 -- Generating core types and expressions
 
-genHtmlTypeDecls :: Jack HtmlDecls
+genHtmlTypeDecls :: Jack (HtmlDecls ())
 genHtmlTypeDecls =
-  genTypeDecls htmlTypes genHtmlLitT
+  genTypeDecls (fmap (const ()) htmlTypes) genHtmlLitT
 
-genWellTypedHtmlExpr :: HtmlDecls -> Jack (HtmlType, HtmlExpr ())
+genWellTypedHtmlExpr :: HtmlDecls () -> Jack (HtmlType, HtmlExpr ())
 genWellTypedHtmlExpr ctx = do
   ty <- genHtmlType ctx
   ex <- genWellTypedExpr ctx ty (genHtmlType ctx) genWellTypedHtmlLit
   pure (ty, ex)
 
-genWellTypedHtmlModule :: Int -> HtmlDecls -> Jack (Module HtmlType PrimT (HtmlType, SrcAnnotation))
+genWellTypedHtmlModule :: Int -> HtmlDecls SrcAnnotation -> Jack (Module HtmlType PrimT SrcAnnotation (HtmlType, SrcAnnotation))
 genWellTypedHtmlModule n decls = do
   let ourDecls = subtractTypes decls htmlTypes
   modl <- Module
@@ -52,16 +52,16 @@ genWellTypedHtmlModule n decls = do
     <*> fmap (fmap (\(ty, ex) -> ModuleExpr (Just ty) ex))
           (genWellTypedLetrec
             n
-            (decls <> htmlTypes)
+            (fmap (const ()) (decls <> htmlTypes))
             (fst <$> constructorFunctions ourDecls)
-            (genHtmlType decls)
+            (genHtmlType (fmap (const ()) decls))
             genWellTypedHtmlLit)
   either
     (\e -> (fail ("invariant: module was not well-typed!\n" <> show e)))
     pure
     (checkModule ourDecls mempty (fmap (const EmptyAnnotation) modl))
 
-genHtmlType :: HtmlDecls -> Jack HtmlType
+genHtmlType :: HtmlDecls () -> Jack HtmlType
 genHtmlType ctx =
   genTypeFromContext ctx genHtmlLitT
 
