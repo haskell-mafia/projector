@@ -44,7 +44,7 @@ prop_library_module =
 
 prop_welltyped :: Property
 prop_welltyped =
-  gamble genHtmlTypeDecls $ \decls ->
+  gamble (fmap (const EmptyAnnotation) <$> genHtmlTypeDecls) $ \decls ->
     gamble (chooseInt (0,  100)) $ \k ->
       gamble (genWellTypedHtmlModule k decls) $ \modl ->
         moduleProp decls (ModuleName "Test.Purescript.Arbitrary.WellTyped") $ modl {
@@ -55,15 +55,15 @@ prop_welltyped =
 
 -- -----------------------------------------------------------------------------
 
-baseDecls :: HtmlDecls
+baseDecls :: HtmlDecls (Annotation a)
 baseDecls =
   Lib.types <> Prim.types
 
-moduleProp :: HtmlDecls -> ModuleName -> Module HtmlType PrimT (HtmlType, a) -> Property
+moduleProp :: HtmlDecls SrcAnnotation -> ModuleName -> Module HtmlType PrimT SrcAnnotation (HtmlType, SrcAnnotation) -> Property
 moduleProp decls mn =
   uncurry pscProp . either (fail . show) id . Html.codeGenModule purescriptBackend decls mn
 
-modulePropCheck :: HtmlDecls -> ModuleName -> Module (Maybe HtmlType) PrimT SrcAnnotation -> Property
+modulePropCheck :: HtmlDecls SrcAnnotation -> ModuleName -> Module (Maybe HtmlType) PrimT SrcAnnotation SrcAnnotation -> Property
 modulePropCheck decls mn modl@(Module tys _ _) =
   uncurry pscProp . either (fail . T.unpack) id $ do
     modl' <- first Html.renderHtmlError (Html.checkModule tys mempty modl)

@@ -100,9 +100,9 @@ htmlConstructors =
   where
   sumCons x =
     case x of
-      DVariant cts ->
+      DVariant cts _ ->
         S.fromList (fmap fst cts)
-      DRecord _ ->
+      DRecord _ _ ->
         mempty
 
 
@@ -110,7 +110,7 @@ htmlConstructors =
 
 -- -----------------------------------------------------------------------------
 
-renderModule :: HtmlDecls -> ModuleName -> Module HtmlType PrimT (HtmlType, a) -> Either HaskellError (FilePath, Text)
+renderModule :: HtmlDecls a -> ModuleName -> Module HtmlType PrimT a (HtmlType, a) -> Either HaskellError (FilePath, Text)
 renderModule _decls mn@(ModuleName n) m = do
   let pragmas = [
           "{-# LANGUAGE NoImplicitPrelude #-}"
@@ -134,7 +134,7 @@ renderModule _decls mn@(ModuleName n) m = do
      , decls
      ])
 
-renderExpr :: HtmlDecls -> Name -> HtmlExpr (HtmlType, a) -> Either HaskellError Text
+renderExpr :: HtmlDecls a -> Name -> HtmlExpr (HtmlType, a) -> Either HaskellError Text
 renderExpr _decls n =
   fmap (T.pack . TH.pprint) . genExpDec n . toHaskellExpr . rewriteExpr
 
@@ -148,7 +148,7 @@ genImport (ModuleName n) imports =
     ImportQualified ->
       "import qualified " <> n
 
-genModule :: HaskellModule (HtmlType, a) -> Either HaskellError [TH.Dec]
+genModule :: HaskellModule a (HtmlType, a) -> Either HaskellError [TH.Dec]
 genModule (Module ts _ es) = do
   let tdecs = genTypeDecs ts
   decs <- for (M.toList es) $ \(n, ModuleExpr ty e) -> do
@@ -171,16 +171,16 @@ htmlRuntime =
 -- They shouldn't even be a field in 'Module'.
 -- We only use this for testing: we generate a lot of datatypes for our expressions.
 
-genTypeDecs :: HaskellDecls -> [TH.Dec]
+genTypeDecs :: HaskellDecls a -> [TH.Dec]
 genTypeDecs =
   fmap (uncurry genTypeDec) . M.toList . unTypeDecls
 
-genTypeDec :: TypeName -> HaskellDecl -> TH.Dec
+genTypeDec :: TypeName -> HaskellDecl a -> TH.Dec
 genTypeDec (TypeName n) ty =
   case ty of
-    DVariant cts ->
+    DVariant cts _ ->
       data_ (mkName_ n) [] (fmap (uncurry genCon) cts)
-    DRecord fts ->
+    DRecord fts _ ->
       data_ (mkName_ n) [] [recordCon (Constructor n) fts]
 
 -- | Constructor declarations.

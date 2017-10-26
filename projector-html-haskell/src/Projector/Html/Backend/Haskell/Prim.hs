@@ -54,7 +54,7 @@ toHaskellExpr :: Expr PrimT a -> Expr HaskellPrimT a
 toHaskellExpr =
   mapGround tmap vmap
 
-toHaskellModule :: Module HtmlType PrimT a -> Module HaskellType HaskellPrimT a
+toHaskellModule :: Module HtmlType PrimT a b -> Module HaskellType HaskellPrimT a b
 toHaskellModule (Module typs imps exps) =
   Module
     (toHaskellTypeDecls typs)
@@ -66,14 +66,14 @@ toHaskellType =
   swapLibTypes . mapGroundType tmap
 {-# INLINE toHaskellType #-}
 
-toHaskellTypeDecls :: HtmlDecls -> HaskellDecls
+toHaskellTypeDecls :: HtmlDecls a -> HaskellDecls a
 toHaskellTypeDecls (TypeDecls decls) =
   TypeDecls . with decls $ \decl ->
     case decl of
-      DVariant cts ->
-        DVariant (with cts (fmap (fmap toHaskellType)))
-      DRecord fts ->
-        DRecord (with fts (fmap toHaskellType))
+      DVariant cts a ->
+        DVariant (with cts (fmap (fmap toHaskellType))) a
+      DRecord fts a ->
+        DRecord (with fts (fmap toHaskellType)) a
 
 -- if we encounter library types we also have to tweak them
 swapLibTypes :: HaskellType -> HaskellType

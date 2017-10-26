@@ -64,24 +64,24 @@ prop_hello_world =
 
 prop_welltyped :: Property
 prop_welltyped =
-  gamble (genHtmlTypeDecls) $ \decls ->
+  gamble (fmap (const EmptyAnnotation) <$> genHtmlTypeDecls) $ \decls ->
     gamble (chooseInt (0, 100)) $ \k ->
       gamble (genWellTypedHtmlModule k decls `suchThat` (isRight . checkModule haskellBackend)) $ \modl ->
         moduleProp decls (ModuleName "Test.Haskell.Arbitrary.WellTyped") modl
 
 -- -----------------------------------------------------------------------------
 
-baseDecls :: HtmlDecls
+baseDecls :: HtmlDecls (Annotation a)
 baseDecls =
   Lib.types <> Prim.types
 
-modulePropCheck :: HtmlDecls -> ModuleName -> Module (Maybe HtmlType) PrimT SrcAnnotation -> Property
+modulePropCheck :: HtmlDecls SrcAnnotation -> ModuleName -> Module (Maybe HtmlType) PrimT SrcAnnotation SrcAnnotation -> Property
 modulePropCheck decls mn modl@(Module tys _ _) =
   uncurry ghcProp . either (fail . T.unpack) id $ do
     modl' <- first Html.renderHtmlError (Html.checkModule tys mempty modl)
     first renderHaskellError (Html.codeGenModule haskellBackend decls mn modl')
 
-moduleProp :: HtmlDecls -> ModuleName -> Module HtmlType PrimT (HtmlType, SrcAnnotation) -> Property
+moduleProp :: HtmlDecls SrcAnnotation -> ModuleName -> Module HtmlType PrimT SrcAnnotation (HtmlType, SrcAnnotation) -> Property
 moduleProp decls mn =
   uncurry ghcProp .
   either (fail . T.unpack) id .

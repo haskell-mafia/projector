@@ -62,32 +62,36 @@ predicates = [
 -- -----------------------------------------------------------------------------
 
 renderModule ::
-     HtmlDecls
+     HtmlDecls a
   -> ModuleName
-  -> Module HtmlType PrimT (HtmlType, a)
+  -> Module HtmlType PrimT a (HtmlType, a)
   -> Either PurescriptError (FilePath, Text)
 renderModule decls mn@(ModuleName n) m = do
   let modName = T.unwords ["module", n, "where"]
       imports = (htmlRuntime, OpenImport) : (M.toList (moduleImports m))
       importText = fmap (uncurry genImport) imports
-  decs <- fmap (fmap prettyUndecorated) (genModule decls m)
+  decs <- genModule decls m
   pure (genFileName mn, T.unlines $ mconcat [
       [modName]
     , importText
-    , decs
+    , [decs]
     ])
 
-renderExpr :: HtmlDecls -> Name -> HtmlExpr (HtmlType, a) -> Either PurescriptError Text
+renderExpr :: HtmlDecls a -> Name -> HtmlExpr (HtmlType, a) -> Either PurescriptError Text
 renderExpr decls n =
   fmap prettyUndecorated . genExpDec decls n
 
-genModule :: HtmlDecls -> Module HtmlType PrimT (HtmlType, a) -> Either PurescriptError [Doc (HtmlType, a)]
+genModule :: HtmlDecls a -> Module HtmlType PrimT a (HtmlType, a) -> Either PurescriptError Text
 genModule decls (Module ts _ es) = do
   let tdecs = genTypeDecs ts
   decs <- for (M.toList es) $ \(n, ModuleExpr ty e) -> do
     d <- genExpDec decls n e
     pure [genTypeSig n ty, d]
-  pure (tdecs <> fold decs)
+  pure . T.unlines $
+    fold [
+        fmap prettyUndecorated tdecs
+      , fmap prettyUndecorated (fold decs)
+      ]
 
 genImport :: ModuleName -> Imports -> Text
 genImport (ModuleName n) imports =
@@ -110,21 +114,21 @@ htmlRuntime =
 
 -- -----------------------------------------------------------------------------
 
-genTypeDecs :: HtmlDecls -> [Doc a]
+genTypeDecs :: HtmlDecls a -> [Doc a]
 genTypeDecs =
   fmap (uncurry genTypeDec) . M.toList . unTypeDecls
 
-genTypeDec :: TypeName -> HtmlDecl -> Doc a
+genTypeDec :: TypeName -> HtmlDecl a -> Doc a
 genTypeDec (TypeName n) ty =
   case ty of
-    DVariant cts ->
+    DVariant cts _a ->
       WL.hang 2
         (text "data" <+> text n WL.<$$> text "="
           WL.<> (foldl'
                   (<+>)
                   WL.empty
                   (WL.punctuate (WL.linebreak WL.<> text "|") (fmap (uncurry genCon) cts))))
-    DRecord fts ->
+    DRecord fts _a ->
       WL.vcat [
         -- newtype
           WL.hang 2
@@ -159,12 +163,12 @@ genTypeSig :: Name -> HtmlType -> Doc a
 genTypeSig (Name n) ty =
   WL.hang 2 (text n <+> "::" <+> genType ty)
 
-genExpDec :: HtmlDecls -> Name -> HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
+genExpDec :: HtmlDecls a -> Name -> HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
 genExpDec decls (Name n) expr = do
   e <- genExp decls expr
   pure (WL.hang 2 (text n <+> text "=" WL.<$$> e))
 
-genExp :: HtmlDecls -> HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
+genExp :: HtmlDecls a -> HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
 genExp decls expr =
   case expr of
     ELit a v ->
@@ -218,7 +222,7 @@ genExp decls expr =
     EHole _ ->
       Left TypeHolePresent
 
-fieldInst :: HtmlDecls -> FieldName -> HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
+fieldInst :: HtmlDecls a -> FieldName -> HtmlExpr (HtmlType, a) -> Either PurescriptError (Doc (HtmlType, a))
 fieldInst decls (FieldName fn) expr = do
   expr' <- genExp decls expr
   pure (text (fn <> ":") <+> expr')
@@ -227,7 +231,7 @@ fieldInst decls (FieldName fn) expr = do
 -- we need the type name to figure out the constructor to match on.
 -- Could potentially get rid of this with purescript-newtype unwrap.
 -- Could also rely on the 'unFoo' function we generate, same diff.
-genRecordPrj :: HtmlDecls -> HtmlExpr (HtmlType, a) -> FieldName -> Either PurescriptError (Doc (HtmlType, a))
+genRecordPrj :: HtmlDecls a -> HtmlExpr (HtmlType, a) -> FieldName -> Either PurescriptError (Doc (HtmlType, a))
 genRecordPrj decls e (FieldName fn) =
   case extractAnnotation e of
     (TVar (TypeName recName), _) -> do
@@ -238,7 +242,7 @@ genRecordPrj decls e (FieldName fn) =
       Left RecordTypeInvariant
 
 genMatch ::
-     HtmlDecls
+     HtmlDecls a
   -> Pattern (HtmlType, a)
   -> HtmlExpr (HtmlType, a)
   -> Either PurescriptError (Doc (HtmlType, a))
@@ -246,7 +250,7 @@ genMatch decls p e = do
   e' <- genExp decls e
   pure (WL.hang 2 ((genPat decls p WL.<> text " ->") WL.<$$> e'))
 
-genPat :: HtmlDecls -> Pattern (HtmlType, a) -> Doc (HtmlType, a)
+genPat :: HtmlDecls a -> Pattern (HtmlType, a) -> Doc (HtmlType, a)
 genPat decls p =
   case p of
     PVar a (Name n) ->
@@ -263,7 +267,7 @@ genPat decls p =
       in case a of
         (TVar tn@(TypeName tname), _) ->
           case lookupType tn decls of
-            Just (DRecord fts) ->
+            Just (DRecord fts _a) ->
               WL.annotate a $
                 WL.parens $
                   (text tname <+>
