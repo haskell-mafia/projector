@@ -49,6 +49,46 @@
 [build.branches-7-10-html-purs]
   command = [["master", "build", "branches-7-10", "-C", "projector-html-purs"]]
 
+
+
+[build.dist-8-0-core]
+  command = [["master", "build", "dist-8-0", "-C", "projector-core"]]
+
+[build.branches-8-0-core]
+  command = [["master", "build", "branches-8-0", "-C", "projector-core"]]
+
+[build.dist-8-0-cli]
+  command = [["master", "build", "dist-8-0", "-C", "projector-cli"]]
+
+[build.branches-8-0-cli]
+  command = [["master", "build", "branches-8-0", "-C", "projector-cli"]]
+
+[build.dist-8-0-html-haskell]
+  command = [["master", "build", "dist-8-0", "-C", "projector-html-haskell"]]
+
+[build.branches-8-0-html-haskell]
+  command = [["master", "build", "branches-8-0", "-C", "projector-html-haskell"]]
+
+[build.dist-8-0-html]
+  command = [["master", "build", "dist-8-0", "-C", "projector-html"]]
+
+[build.branches-8-0-html]
+  command = [["master", "build", "branches-8-0", "-C", "projector-html"]]
+
+[build.dist-8-0-html-runtime-hs]
+  command = [["master", "build", "dist-8-0", "-C", "projector-html-runtime-hs"]]
+
+[build.branches-8-0-html-runtime-hs]
+  command = [["master", "build", "branches-8-0", "-C", "projector-html-runtime-hs"]]
+
+[build.dist-8-0-html-purs]
+  command = [["master", "build", "dist-8-0", "-C", "projector-html-purs"]]
+
+[build.branches-8-0-html-purs]
+  command = [["master", "build", "branches-8-0", "-C", "projector-html-purs"]]
+
+
+
 [build.dist-validate]
   command = [["validate-respect"]]
 
